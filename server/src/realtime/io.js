@@ -2,6 +2,8 @@ import { Server } from 'socket.io';
 import { authSocketMiddleware } from './middlewares/auth.socket.js';
 import { presenceService } from '../domain/services/presence.service.js';
 import { logger } from '../utils/logger.js';
+import { EVENTS } from './protocol/events.js';
+import { Schemas } from './protocol/schemas.js';
 
 let io = null;
 
@@ -81,6 +83,103 @@ export function initSocketIO(httpServer) {
         socket.emit('presence:allUsersResponse', { success: false, error: error.message });
       }
     });
+
+    // ========== SALONS (ROOMS) ==========
+
+    socket.on(EVENTS.ROOM_JOIN, async (payload, callback) => {
+  try {
+    // 1 Validation du payload
+    const { roomId } = Schemas.roomJoin.parse(payload);
+
+    // 2 Mise à jour de la présence (métier)
+    await presenceService.joinRoom(userId, roomId);
+
+    // 3 Rejoindre la room Socket.IO
+    socket.join(roomId);
+
+    logger.info(`👥 ${username} a rejoint la room ${roomId}`);
+
+    // 4 Notifier les autres utilisateurs du salon
+    socket.to(roomId).emit(EVENTS.PRESENCE_USER_JOINED, {
+      userId,
+      username,
+      roomId,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 5 Récupérer la liste des utilisateurs du salon
+    const roomUsers = await presenceService.getOnlineUsers();
+
+    //  Filtrer uniquement ceux qui sont dans cette room
+    const usersInRoom = roomUsers.filter(user =>
+      user.userId !== userId // on enlève soi-même
+    );
+
+    // 6 Envoyer l’état au nouvel arrivant
+    socket.emit(EVENTS.PRESENCE_UPDATE, {
+      roomId,
+      users: usersInRoom,
+    });
+
+    // 7 Callback succès (optionnel)
+    if (typeof callback === 'function') {
+      callback({ success: true });
+    }
+  } catch (error) {
+    logger.error('❌ Erreur room:join', error.message);
+
+    // Erreur de validation ou autre
+    if (typeof callback === 'function') {
+      callback({
+        success: false,
+        error: 'INVALID_PAYLOAD',
+      });
+    }
+  }
+});
+
+
+
+socket.on(EVENTS.ROOM_LEAVE, async (payload, callback) => {
+  try {
+    // 1 Validation du payload
+    const { roomId } = Schemas.roomLeave.parse(payload);
+
+    // 2 Mise à jour de la présence (métier)
+    await presenceService.leaveRoom(userId, roomId);
+
+    // 3 Quitter la room Socket.IO
+    socket.leave(roomId);
+
+    logger.info(`👋 ${username} a quitté la room ${roomId}`);
+
+    // 4 Notifier les autres utilisateurs du salon
+    socket.to(roomId).emit(EVENTS.PRESENCE_USER_LEFT, {
+      userId,
+      username,
+      roomId,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 5 Callback succès (optionnel)
+    if (typeof callback === 'function') {
+      callback({ success: true });
+    }
+  } catch (error) {
+    logger.error('❌ Erreur room:leave', error.message);
+
+    if (typeof callback === 'function') {
+      callback({
+        success: false,
+        error: 'INVALID_PAYLOAD',
+      });
+    }
+  }
+});
+
+
+
+
     
     // ========== 4.2 DÉCONNEXION ==========
     socket.on('disconnect', async (reason) => {
