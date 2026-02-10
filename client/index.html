@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat App - Connexion</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .login-container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      width: 100%;
+      max-width: 400px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+    }
+    input {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .error {
+      background: #ffe6e6;
+      color: #d63031;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+      text-align: center;
+    }
+    .error.show {
+      display: block;
+    }
+    .info {
+      text-align: center;
+      margin-top: 20px;
+      color: #666;
+      font-size: 13px;
+    }
+    .loader {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #fff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h1>💬 Chat App</h1>
+    <p class="subtitle">Connectez-vous pour discuter</p>
+    
+    <div id="error" class="error"></div>
+    
+    <form id="loginForm">
+      <div class="form-group">
+        <label for="username">Nom d'utilisateur</label>
+        <input type="text" id="username" placeholder="Ex: john_doe" required minlength="3" maxlength="20">
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" placeholder="Votre mot de passe" required>
+      </div>
+      
+      <button type="submit" id="submitBtn">
+        <span id="btnText">Se connecter</span>
+        <div id="loader" class="loader"></div>
+      </button>
+    </form>
+    
+    <p class="info">
+      Pas de compte ? Entrez vos identifiants, un compte sera créé automatiquement.
+    </p>
+  </div>
+
+  <script>
+    const SERVER_URL = 'http://localhost:3000';
+    
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('error');
+      const btnText = document.getElementById('btnText');
+      const loader = document.getElementById('loader');
+      const submitBtn = document.getElementById('submitBtn');
+      
+      // Reset error
+      errorDiv.classList.remove('show');
+      
+      // Loading state
+      btnText.style.display = 'none';
+      loader.style.display = 'block';
+      submitBtn.disabled = true;
+      
+      try {
+        const response = await fetch(`${SERVER_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          // Stocker le token et les infos user
+          localStorage.setItem('token', data.data.token);
+          localStorage.setItem('user', JSON.stringify(data.data.user));
+          
+          // Rediriger vers la page principale
+          window.location.href = 'app.html';
+        } else {
+          throw new Error(data.error?.message || 'Erreur de connexion');
+        }
+      } catch (error) {
+        errorDiv.textContent = error.message;
+        errorDiv.classList.add('show');
+      } finally {
+        btnText.style.display = 'block';
+        loader.style.display = 'none';
+        submitBtn.disabled = false;
+      }
+    });
+    
+    // Si déjà connecté, rediriger
+    if (localStorage.getItem('token')) {
+      window.location.href = 'app.html';
+    }
+  </script>
+</body>
+</html>
