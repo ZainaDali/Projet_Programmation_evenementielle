@@ -3,7 +3,7 @@ import { useSocket } from '../context/SocketContext';
 import { Users, Circle } from 'lucide-react';
 
 const Sidebar = () => {
-  const { socket } = useSocket();
+  const { socket, connected } = useSocket();
   const [users, setUsers] = useState([]);
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
@@ -21,13 +21,18 @@ const Sidebar = () => {
     });
     socket.on('user:online', loadUsers);
     socket.on('user:offline', loadUsers);
-    loadUsers();
     return () => {
       socket.off('presence:allUsersResponse');
       socket.off('user:online');
       socket.off('user:offline');
     };
   }, [socket]);
+
+  useEffect(() => {
+    if (socket && connected) {
+      loadUsers();
+    }
+  }, [socket, connected]);
 
   const onlineUsers = users.filter(u => u.status === 'online');
   const offlineUsers = users.filter(u => u.status === 'offline');
