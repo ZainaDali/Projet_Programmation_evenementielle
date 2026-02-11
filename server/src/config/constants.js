@@ -42,6 +42,13 @@ export const POLL_STATUS = {
   CLOSED: 'closed',
 };
 
+// Types d'accès aux sondages
+export const POLL_ACCESS_TYPES = {
+  PUBLIC: 'public',     // Tout le monde peut voir et voter
+  PRIVATE: 'private',   // Seul le créateur peut voir
+  SELECTED: 'selected', // Uniquement les utilisateurs sélectionnés
+};
+
 export const RATE_LIMITS = {
   VOTE_MAX_PER_MINUTE: 10,
   POLL_CREATE_MAX_PER_MINUTE: 3,

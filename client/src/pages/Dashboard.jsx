@@ -69,12 +69,20 @@ const Dashboard = () => {
         addActivity(`Message de ${data.message.senderUsername}`, 'system');
       }
     });
+    socket.on('poll:updated', (data) => {
+      if (data?.poll?.question) addActivity(`Sondage modifié: "${data.poll.question}" par ${data.updatedBy}`, 'system');
+    });
+    socket.on('poll:deleted', (data) => {
+      if (data?.question) addActivity(`Sondage supprimé: "${data.question}" par ${data.deletedBy}`, 'system');
+    });
     return () => {
       socket.off('user:online');
       socket.off('user:offline');
       socket.off('poll:created');
       socket.off('poll:closed');
       socket.off('chat:new_message');
+      socket.off('poll:updated');
+      socket.off('poll:deleted');
     };
   }, [socket, user]);
 

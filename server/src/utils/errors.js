@@ -45,6 +45,10 @@ export const Errors = {
   // Chat
   MESSAGE_TOO_LARGE: new AppError('Message exceeds maximum length of 500 characters', 400, 'MESSAGE_TOO_LARGE'),
 
+  // Polls access
+  POLL_ACCESS_DENIED: new AppError('You do not have access to this poll', 403, 'POLL_ACCESS_DENIED'),
+  POLL_USER_KICKED: new AppError('You have been removed from this poll', 403, 'POLL_USER_KICKED'),
+
   // Rate limiting
   RATE_LIMITED: new AppError('Too many requests, please slow down', 429, 'RATE_LIMITED'),
   
