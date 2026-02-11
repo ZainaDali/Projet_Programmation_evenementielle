@@ -3,16 +3,13 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
-import RoomsList from '../components/RoomsList';
-import RoomDetail from '../components/RoomDetail';
+import PollsView from '../components/PollsView';
 import ActivityLog from '../components/ActivityLog';
 
 const Dashboard = () => {
   const { user } = useAuth();
   const { socket, connected } = useSocket();
-  const [currentRoom, setCurrentRoom] = useState(null);
   const [activities, setActivities] = useState([]);
-  const [roomsRefreshKey, setRoomsRefreshKey] = useState(0);
 
   const addActivity = (message, type = 'system') => {
     setActivities(prev => [{ id: Date.now(), message, type, time: new Date().toLocaleTimeString('fr-FR') }, ...prev].slice(0, 50));
@@ -26,61 +23,19 @@ const Dashboard = () => {
     socket.on('user:offline', (data) => {
       if (data && data.username) addActivity(`${data.username} est hors ligne`, 'offline');
     });
-    socket.on('room:created', (data) => {
-      if (data && data.room && data.room.name) {
-        addActivity(`Salon "${data.room.name}" créé`, 'system');
-        setRoomsRefreshKey(k => k + 1);
-      }
-    });
-    socket.on('room:updated', (data) => {
-      if (data && data.room && data.room.name) {
-        addActivity(`Salon "${data.room.name}" modifié`, 'system');
-        setRoomsRefreshKey(k => k + 1);
-        // Mettre à jour la room courante si c'est celle qui a été modifiée
-        setCurrentRoom(prev => prev && prev.id === data.room.id ? { ...prev, ...data.room } : prev);
-      }
-    });
-    socket.on('room:deleted', (data) => {
-      if (data && data.roomName) {
-        addActivity(`Salon "${data.roomName}" supprimé`, 'system');
-        if (currentRoom?.id === data.roomId) setCurrentRoom(null);
-        setRoomsRefreshKey(k => k + 1);
-      }
-    });
     socket.on('poll:created', (data) => {
       if (data && data.poll && data.poll.question) addActivity(`Sondage: "${data.poll.question}"`, 'system');
     });
     socket.on('poll:closed', (data) => {
       if (data && data.poll && data.poll.question) addActivity(`Sondage fermé: "${data.poll.question}"`, 'system');
     });
-    socket.on('room:userJoined', (data) => {
-      if (data && data.username && currentRoom?.id === data.roomId) addActivity(`${data.username} a rejoint`, 'online');
-    });
-    socket.on('room:userLeft', (data) => {
-      if (data && data.username && currentRoom?.id === data.roomId) addActivity(`${data.username} a quitté`, 'offline');
-    });
-    // Écouter l'expulsion d'un salon (quand un admin retire l'utilisateur)
-    socket.on('room:kicked', (data) => {
-      if (data && data.roomName) {
-        addActivity(`Vous avez été retiré du salon "${data.roomName}"`, 'offline');
-        // Si l'utilisateur est actuellement dans ce salon, le faire sortir
-        setCurrentRoom(prev => prev && prev.id === data.roomId ? null : prev);
-        setRoomsRefreshKey(k => k + 1);
-      }
-    });
     return () => {
       socket.off('user:online');
       socket.off('user:offline');
-      socket.off('room:created');
-      socket.off('room:updated');
-      socket.off('room:deleted');
       socket.off('poll:created');
       socket.off('poll:closed');
-      socket.off('room:userJoined');
-      socket.off('room:userLeft');
-      socket.off('room:kicked');
     };
-  }, [socket, currentRoom]);
+  }, [socket]);
 
   useEffect(() => {
     if (connected) addActivity('Connecté au serveur', 'online');
@@ -94,20 +49,7 @@ const Dashboard = () => {
         <div className="flex gap-6">
           <Sidebar />
           <main className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden">
-            {currentRoom ? (
-              <RoomDetail
-                room={currentRoom}
-                onLeave={() => setCurrentRoom(null)}
-                onRoomDeleted={() => {
-                  setCurrentRoom(null);
-                  setRoomsRefreshKey(k => k + 1);
-                }}
-                onRoomUpdated={(updated) => setCurrentRoom(updated)}
-                addActivity={addActivity}
-              />
-            ) : (
-              <RoomsList onRoomSelect={setCurrentRoom} addActivity={addActivity} refreshKey={roomsRefreshKey} />
-            )}
+            <PollsView addActivity={addActivity} />
           </main>
           <ActivityLog activities={activities} />
         </div>
