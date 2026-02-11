@@ -42,6 +42,9 @@ export const Errors = {
   INVALID_OPTION: new AppError('Invalid poll option', 400, 'INVALID_PAYLOAD'),
   INVALID_POLL_OPTIONS: new AppError('Poll must have between 2 and 6 options', 400, 'INVALID_PAYLOAD'),
   
+  // Chat
+  MESSAGE_TOO_LARGE: new AppError('Message exceeds maximum length of 500 characters', 400, 'MESSAGE_TOO_LARGE'),
+
   // Rate limiting
   RATE_LIMITED: new AppError('Too many requests, please slow down', 429, 'RATE_LIMITED'),
   

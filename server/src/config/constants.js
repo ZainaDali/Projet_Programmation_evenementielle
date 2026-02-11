@@ -13,6 +13,7 @@ export const COLLECTIONS = {
   ROOMS: 'rooms',
   POLLS: 'polls',
   VOTES: 'votes',
+  MESSAGES: 'messages',
 };
 
 // Statuts de session
@@ -44,4 +45,11 @@ export const POLL_STATUS = {
 export const RATE_LIMITS = {
   VOTE_MAX_PER_MINUTE: 10,
   POLL_CREATE_MAX_PER_MINUTE: 3,
+  CHAT_MAX_PER_10S: 5,
+};
+
+// Limites chat
+export const CHAT_LIMITS = {
+  MAX_MESSAGE_LENGTH: 500,
+  HISTORY_SIZE: 50,
 };
