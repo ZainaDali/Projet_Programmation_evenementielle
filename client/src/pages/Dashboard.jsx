@@ -27,15 +27,22 @@ const Dashboard = () => {
       if (data && data.username) addActivity(`${data.username} est hors ligne`, 'offline');
     });
     socket.on('room:created', (data) => {
-      if (data && data.room && data.room.name) addActivity(`Salon "${data.room.name}" créé`, 'system');
+      if (data && data.room && data.room.name) {
+        addActivity(`Salon "${data.room.name}" créé`, 'system');
+        setRoomsRefreshKey(k => k + 1);
+      }
     });
     socket.on('room:updated', (data) => {
-      if (data && data.room && data.room.name) addActivity(`Salon "${data.room.name}" modifié`, 'system');
+      if (data && data.room && data.room.name) {
+        addActivity(`Salon "${data.room.name}" modifié`, 'system');
+        setRoomsRefreshKey(k => k + 1);
+      }
     });
     socket.on('room:deleted', (data) => {
       if (data && data.roomName) {
         addActivity(`Salon "${data.roomName}" supprimé`, 'system');
         if (currentRoom?.id === data.roomId) setCurrentRoom(null);
+        setRoomsRefreshKey(k => k + 1);
       }
     });
     socket.on('poll:created', (data) => {
