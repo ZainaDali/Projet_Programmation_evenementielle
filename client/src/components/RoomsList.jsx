@@ -95,6 +95,12 @@ const RoomsList = ({ onRoomSelect, addActivity, refreshKey = 0 }) => {
                       <BarChart3 className="w-3.5 h-3.5" />
                       {room.pollsCount || 0} sondage(s)
                     </span>
+                    {room.accessType === 'selected' && room.allowedUserIds && (
+                      <span className="flex items-center gap-1 text-xs text-slate-500">
+                        <Users className="w-3.5 h-3.5" />
+                        {room.allowedUserIds.length} membre(s)
+                      </span>
+                    )}
                     <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded ${
                       room.accessType === 'private'
                         ? 'bg-slate-100 text-slate-600'

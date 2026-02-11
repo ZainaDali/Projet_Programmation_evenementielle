@@ -36,6 +36,8 @@ const Dashboard = () => {
       if (data && data.room && data.room.name) {
         addActivity(`Salon "${data.room.name}" modifié`, 'system');
         setRoomsRefreshKey(k => k + 1);
+        // Mettre à jour la room courante si c'est celle qui a été modifiée
+        setCurrentRoom(prev => prev && prev.id === data.room.id ? { ...prev, ...data.room } : prev);
       }
     });
     socket.on('room:deleted', (data) => {

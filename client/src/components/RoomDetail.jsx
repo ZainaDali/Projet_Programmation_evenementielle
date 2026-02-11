@@ -18,6 +18,34 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
   const [editAllowedUserIds, setEditAllowedUserIds] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [editLoading, setEditLoading] = useState(false);
+  const [roomMembers, setRoomMembers] = useState([]);
+
+  // Charger les membres autorisés pour les salons "selected"
+  const loadRoomMembers = async () => {
+    if (room.accessType !== 'selected') {
+      setRoomMembers([]);
+      return;
+    }
+    try {
+      const [roomRes, usersRes] = await Promise.all([
+        fetch(`${API_URL}/rooms/${room.id}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_URL}/rooms/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
+      ]);
+      const roomData = await roomRes.json();
+      const usersData = await usersRes.json();
+      if (roomData?.success && roomData.data && usersData?.success && usersData.data) {
+        const allowedIds = roomData.data.allowedUserIds || [];
+        const members = usersData.data.filter(u => allowedIds.includes(u.id));
+        setRoomMembers(members);
+      }
+    } catch (e) {
+      console.error('Erreur chargement membres:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadRoomMembers();
+  }, [room.id, room.accessType, room.allowedUserIds]);
 
   useEffect(() => {
     if (!socket) return;
@@ -35,10 +63,24 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
     socket.on('poll:closed', (data) => {
       if (data && data.poll && data.poll.roomId === room.id) updatePoll(data.poll);
     });
+    // Écouter les mises à jour du salon en temps réel
+    const handleRoomUpdated = (data) => {
+      if (data && data.room && data.room.id === room.id) {
+        onRoomUpdated && onRoomUpdated(data.room);
+        // Recharger les membres si c'est un salon sélectionné
+        if (data.room.accessType === 'selected') {
+          loadRoomMembers();
+        } else {
+          setRoomMembers([]);
+        }
+      }
+    };
+    socket.on('room:updated', handleRoomUpdated);
     return () => {
       socket.off('poll:created');
       socket.off('poll:results');
       socket.off('poll:closed');
+      socket.off('room:updated', handleRoomUpdated);
     };
   }, [socket, room]);
 
@@ -141,6 +183,8 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
         onRoomUpdated && onRoomUpdated(data.data);
         addActivity(`Salon "${editName}" modifié`, 'system');
         setShowEditRoom(false);
+        // Recharger les membres après modification
+        loadRoomMembers();
       } else {
         alert(data?.error?.message || 'Erreur');
       }
@@ -220,6 +264,39 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
+        {/* Affichage des membres autorisés pour les salons "Sélectionné" */}
+        {room.accessType === 'selected' && (
+          <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-5 h-5 text-slate-600" />
+              <h4 className="font-semibold text-slate-800">Membres autorisés</h4>
+              <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+                {roomMembers.length}
+              </span>
+            </div>
+            {roomMembers.length === 0 ? (
+              <p className="text-sm text-slate-500">Aucun membre sélectionné</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {roomMembers.map(member => (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+                  >
+                    <div className={`w-2 h-2 rounded-full ${
+                      member.status === 'online' ? 'bg-green-500' : 'bg-slate-300'
+                    }`} />
+                    <span className="text-slate-700">{member.username}</span>
+                    {member.id === room.creatorId && (
+                      <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">Créateur</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-5 h-5 text-slate-600" />
           <h4 className="font-semibold text-slate-800">Sondages</h4>

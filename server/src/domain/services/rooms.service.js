@@ -85,6 +85,7 @@ export const roomsService = {
       name: room.name,
       description: room.description,
       accessType: room.accessType,
+      allowedUserIds: room.allowedUserIds || [],
       creatorId: room.creatorId,
       creatorUsername: room.creatorUsername,
       // TODO: Ajouter pollsCount quand les sondages seront implémentés
