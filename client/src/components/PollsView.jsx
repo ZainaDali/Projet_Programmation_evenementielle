@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { BarChart3, Plus, X, Check, Edit3, Trash2, UserMinus, Users, Globe, Lock, UserCheck, Eye } from 'lucide-react';
+import { BarChart3, Plus, X, Check, Edit3, Trash2, UserMinus, Users, Globe, Lock, UserCheck, Eye, MessageSquare } from 'lucide-react';
+import ChatView from './ChatView';
 
 const ACCESS_LABELS = { public: 'Public', private: 'Privé', selected: 'Personnalisé' };
 const ACCESS_ICONS = { public: Globe, private: Lock, selected: UserCheck };
@@ -31,6 +32,8 @@ const PollsView = ({ addActivity }) => {
 
   // Participants panel
   const [showParticipants, setShowParticipants] = useState(null);
+
+  const [openChatPollId, setOpenChatPollId] = useState(null);
 
   // ========== LOAD ==========
   const loadPolls = () => {
@@ -458,16 +461,41 @@ const PollsView = ({ addActivity }) => {
                       {userVoted && !isClosed && ' — Vous avez voté (modifiable)'}
                       {userVoted && isClosed && ' — Vous avez voté'}
                     </div>
-                    {canClose && (
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleClosePoll(poll.id)}
-                        className="flex items-center gap-2 bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        onClick={() => setOpenChatPollId(openChatPollId === poll.id ? null : poll.id)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          openChatPollId === poll.id
+                            ? 'bg-slate-800 text-white'
+                            : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                        }`}
                       >
-                        <X className="w-4 h-4" />
-                        Fermer
+                        <MessageSquare className="w-4 h-4" />
+                        Chat
                       </button>
-                    )}
+                      {canClose && (
+                        <button
+                          onClick={() => handleClosePoll(poll.id)}
+                          className="flex items-center gap-2 bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                          Fermer
+                        </button>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Chat panel */}
+                  {openChatPollId === poll.id && (
+                    <div className="mt-4 border-t border-slate-200 pt-4" style={{ height: '400px' }}>
+                      <ChatView
+                        key={poll.id}
+                        pollId={poll.id}
+                        pollQuestion={poll.question}
+                        addActivity={addActivity}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}

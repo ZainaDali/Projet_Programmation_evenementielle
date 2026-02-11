@@ -5,30 +5,19 @@ import { Errors } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 
 export const chatService = {
-  /**
-   * Envoie un message dans un salon
-   * @param {string} roomId - ID du salon
-   * @param {string} content - Contenu du message
-   * @param {string} senderId - ID de l'expéditeur
-   * @param {string} senderUsername - Nom de l'expéditeur
-   * @returns {object} Le message créé
-   */
-  async sendMessage({ roomId, content }, senderId, senderUsername) {
-    // Vérifier que le salon existe et que l'utilisateur en est membre
-    const roomsCollection = getCollection(COLLECTIONS.ROOMS);
-    const room = await roomsCollection.findOne({ id: roomId });
+  async sendMessage({ pollId, content }, senderId, senderUsername, senderRole) {
+    const pollsCollection = getCollection(COLLECTIONS.POLLS);
+    const poll = await pollsCollection.findOne({ id: pollId });
 
-    if (!room) {
-      throw Errors.ROOM_NOT_FOUND;
+    if (!poll) {
+      throw Errors.NOT_FOUND;
     }
 
-    // Vérifier les droits d'accès au salon
-    const hasAccess = this.userHasRoomAccess(room, senderId);
+    const hasAccess = this.userHasPollAccess(poll, senderId, senderRole);
     if (!hasAccess) {
       throw Errors.FORBIDDEN;
     }
 
-    // Valider la taille du message
     if (!content || content.trim().length === 0) {
       throw Errors.INVALID_PAYLOAD;
     }
@@ -41,7 +30,7 @@ export const chatService = {
 
     const message = {
       id: generateMessageId(),
-      roomId,
+      pollId,
       content: content.trim(),
       senderId,
       senderUsername,
@@ -51,37 +40,29 @@ export const chatService = {
 
     await messagesCollection.insertOne(message);
 
-    // Garder seulement les N derniers messages par salon
-    await this.pruneMessages(roomId);
+    await this.pruneMessages(pollId);
 
-    logger.info(`Message envoyé dans salon ${roomId} par ${senderUsername}`);
+    logger.info(`Message envoyé dans sondage ${pollId} par ${senderUsername}`);
 
     return this.formatMessage(message);
   },
 
-  /**
-   * Récupère l'historique des messages d'un salon
-   * @param {string} roomId - ID du salon
-   * @param {string} userId - ID de l'utilisateur qui demande l'historique
-   * @returns {object[]} Liste des messages
-   */
-  async getHistory(roomId, userId) {
-    // Vérifier que le salon existe et que l'utilisateur en est membre
-    const roomsCollection = getCollection(COLLECTIONS.ROOMS);
-    const room = await roomsCollection.findOne({ id: roomId });
+  async getHistory(pollId, userId, userRole) {
+    const pollsCollection = getCollection(COLLECTIONS.POLLS);
+    const poll = await pollsCollection.findOne({ id: pollId });
 
-    if (!room) {
-      throw Errors.ROOM_NOT_FOUND;
+    if (!poll) {
+      throw Errors.NOT_FOUND;
     }
 
-    const hasAccess = this.userHasRoomAccess(room, userId);
+    const hasAccess = this.userHasPollAccess(poll, userId, userRole);
     if (!hasAccess) {
       throw Errors.FORBIDDEN;
     }
 
     const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
     const messages = await messagesCollection
-      .find({ roomId })
+      .find({ pollId })
       .sort({ createdAt: 1 })
       .limit(CHAT_LIMITS.HISTORY_SIZE)
       .toArray();
@@ -89,13 +70,6 @@ export const chatService = {
     return messages.map(m => this.formatMessage(m));
   },
 
-  /**
-   * Supprime un message (admin ou auteur)
-   * @param {string} messageId - ID du message
-   * @param {string} userId - ID de l'utilisateur qui supprime
-   * @param {string} userRole - Rôle de l'utilisateur
-   * @returns {object} Le message mis à jour
-   */
   async deleteMessage(messageId, userId, userRole) {
     const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
     const message = await messagesCollection.findOne({ id: messageId });
@@ -104,12 +78,10 @@ export const chatService = {
       throw Errors.NOT_FOUND;
     }
 
-    // Seul l'auteur ou un admin/modérateur peut supprimer
     if (message.senderId !== userId && userRole !== 'admin' && userRole !== 'moderator') {
       throw Errors.FORBIDDEN;
     }
 
-    // Suppression logique (soft delete)
     await messagesCollection.updateOne(
       { id: messageId },
       {
@@ -127,41 +99,31 @@ export const chatService = {
     return this.formatMessage(updated);
   },
 
-  /**
-   * Vérifie si un utilisateur a accès à un salon
-   * @param {object} room - L'objet salon depuis MongoDB
-   * @param {string} userId - ID de l'utilisateur
-   * @returns {boolean}
-   */
-  userHasRoomAccess(room, userId) {
-    // Le créateur a toujours accès
-    if (room.creatorId === userId) return true;
+  userHasPollAccess(poll, userId, userRole) {
+    if (userRole === 'admin') return true;
 
-    switch (room.accessType) {
-      case 'public':
-        return true;
-      case 'private':
-        // Seul le créateur (déjà géré au-dessus)
-        return false;
-      case 'selected':
-        // Seuls les membres sélectionnés
-        return Array.isArray(room.allowedUserIds) && room.allowedUserIds.includes(userId);
-      default:
-        return false;
+    if (poll.creatorId === userId) return true;
+
+    if (poll.kickedUserIds?.includes(userId)) return false;
+
+    if (!poll.accessType || poll.accessType === 'public') return true;
+
+    if (poll.accessType === 'private') return false;
+
+    if (poll.accessType === 'selected') {
+      return Array.isArray(poll.allowedUserIds) && poll.allowedUserIds.includes(userId);
     }
+
+    return true;
   },
 
-  /**
-   * Supprime les messages anciens pour ne garder que les N derniers
-   * @param {string} roomId - ID du salon
-   */
-  async pruneMessages(roomId) {
+  async pruneMessages(pollId) {
     const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
-    const count = await messagesCollection.countDocuments({ roomId });
+    const count = await messagesCollection.countDocuments({ pollId });
 
     if (count > CHAT_LIMITS.HISTORY_SIZE) {
       const oldest = await messagesCollection
-        .find({ roomId })
+        .find({ pollId })
         .sort({ createdAt: 1 })
         .limit(count - CHAT_LIMITS.HISTORY_SIZE)
         .toArray();
@@ -171,15 +133,10 @@ export const chatService = {
     }
   },
 
-  /**
-   * Formate un message pour l'envoi au client
-   * @param {object} message - Message brut depuis MongoDB
-   * @returns {object} Message formaté
-   */
   formatMessage(message) {
     return {
       id: message.id,
-      roomId: message.roomId,
+      pollId: message.pollId,
       content: message.content,
       senderId: message.senderId,
       senderUsername: message.senderUsername,

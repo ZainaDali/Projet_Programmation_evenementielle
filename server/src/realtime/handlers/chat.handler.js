@@ -4,18 +4,11 @@ import { logger } from '../../utils/logger.js';
 import { getIO } from '../io.js';
 import { RATE_LIMITS } from '../../config/constants.js';
 
-// Rate limit : 5 messages par 10 secondes par utilisateur
 const chatRateLimits = new Map();
 
-/**
- * Vérifie le rate limit pour l'envoi de messages
- * @param {string} userId
- * @returns {boolean} true si autorisé, false si limité
- */
 function checkChatRateLimit(userId) {
   const now = Date.now();
   const userTimestamps = chatRateLimits.get(userId) || [];
-  // Garder seulement les messages des 10 dernières secondes
   const recent = userTimestamps.filter(ts => now - ts < 10000);
 
   if (recent.length >= RATE_LIMITS.CHAT_MAX_PER_10S) {
@@ -27,44 +20,37 @@ function checkChatRateLimit(userId) {
   return true;
 }
 
-/**
- * Enregistre les handlers Socket.IO pour le chat
- * @param {import('socket.io').Socket} socket
- */
 export function setupChatHandlers(socket) {
   const { userId, username, role } = socket.user;
 
-  // ─── chat:send ───────────────────────────────────────────────
   socket.on('chat:send', async (payload, callback) => {
     try {
-      // Validation payload
       if (!payload || typeof payload !== 'object') {
         throw Errors.INVALID_PAYLOAD;
       }
 
-      const { roomId, content } = payload;
+      const { pollId, content } = payload;
 
-      if (!roomId || !content) {
+      if (!pollId || !content) {
         throw Errors.INVALID_PAYLOAD;
       }
 
-      // Rate limit
       if (!checkChatRateLimit(userId)) {
         throw Errors.RATE_LIMITED;
       }
 
       const message = await chatService.sendMessage(
-        { roomId, content },
+        { pollId, content },
         userId,
-        username
+        username,
+        role
       );
 
-      // Broadcast à tous les clients du salon
-      getIO().to(`room:${roomId}`).emit('chat:new_message', {
+      getIO().to(`poll:${pollId}`).emit('chat:new_message', {
         message,
       });
 
-      logger.info(`chat:send - ${username} dans salon ${roomId}`);
+      logger.info(`chat:send - ${username} dans sondage ${pollId}`);
 
       if (typeof callback === 'function') {
         callback({ success: true, data: message });
@@ -83,18 +69,17 @@ export function setupChatHandlers(socket) {
     }
   });
 
-  // ─── chat:history ────────────────────────────────────────────
   socket.on('chat:history', async (payload, callback) => {
     try {
-      if (!payload || !payload.roomId) {
+      if (!payload || !payload.pollId) {
         throw Errors.INVALID_PAYLOAD;
       }
 
-      const { roomId } = payload;
+      const { pollId } = payload;
 
-      const messages = await chatService.getHistory(roomId, userId);
+      const messages = await chatService.getHistory(pollId, userId, role);
 
-      logger.info(`chat:history - ${username} demande historique salon ${roomId}`);
+      logger.info(`chat:history - ${username} demande historique sondage ${pollId}`);
 
       if (typeof callback === 'function') {
         callback({ success: true, data: messages });
@@ -113,7 +98,6 @@ export function setupChatHandlers(socket) {
     }
   });
 
-  // ─── chat:delete ─────────────────────────────────────────────
   socket.on('chat:delete', async (payload, callback) => {
     try {
       if (!payload || !payload.messageId) {
@@ -124,10 +108,9 @@ export function setupChatHandlers(socket) {
 
       const deletedMessage = await chatService.deleteMessage(messageId, userId, role);
 
-      // Notifier tous les clients du salon que le message a été supprimé
-      getIO().to(`room:${deletedMessage.roomId}`).emit('chat:message_deleted', {
+      getIO().to(`poll:${deletedMessage.pollId}`).emit('chat:message_deleted', {
         messageId: deletedMessage.id,
-        roomId: deletedMessage.roomId,
+        pollId: deletedMessage.pollId,
       });
 
       logger.info(`chat:delete - message ${messageId} supprimé par ${username}`);
@@ -149,31 +132,25 @@ export function setupChatHandlers(socket) {
     }
   });
 
-  // ─── chat:joinRoom ───────────────────────────────────────────
-  // Permet au client de rejoindre la room Socket.IO d'un salon
-  // pour recevoir les messages en temps réel
-  socket.on('chat:joinRoom', async (payload, callback) => {
+  socket.on('chat:joinPoll', async (payload, callback) => {
     try {
-      if (!payload || !payload.roomId) {
+      if (!payload || !payload.pollId) {
         throw Errors.INVALID_PAYLOAD;
       }
 
-      const { roomId } = payload;
+      const { pollId } = payload;
 
-      // Vérifier que l'utilisateur a accès en récupérant l'historique
-      // (getHistory vérifie les droits d'accès)
-      const messages = await chatService.getHistory(roomId, userId);
+      const messages = await chatService.getHistory(pollId, userId, role);
 
-      // Rejoindre la room Socket.IO pour recevoir les futurs messages
-      socket.join(`room:${roomId}`);
+      socket.join(`poll:${pollId}`);
 
-      logger.info(`chat:joinRoom - ${username} rejoint salon ${roomId}`);
+      logger.info(`chat:joinPoll - ${username} rejoint sondage ${pollId}`);
 
       if (typeof callback === 'function') {
         callback({ success: true, data: messages });
       }
     } catch (error) {
-      logger.error('chat:joinRoom error:', error.message);
+      logger.error('chat:joinPoll error:', error.message);
       if (typeof callback === 'function') {
         callback({
           success: false,
@@ -186,11 +163,10 @@ export function setupChatHandlers(socket) {
     }
   });
 
-  // ─── chat:leaveRoom ──────────────────────────────────────────
-  socket.on('chat:leaveRoom', (payload) => {
-    if (payload && payload.roomId) {
-      socket.leave(`room:${payload.roomId}`);
-      logger.info(`chat:leaveRoom - ${username} quitte salon ${payload.roomId}`);
+  socket.on('chat:leavePoll', (payload) => {
+    if (payload && payload.pollId) {
+      socket.leave(`poll:${payload.pollId}`);
+      logger.info(`chat:leavePoll - ${username} quitte sondage ${payload.pollId}`);
     }
   });
 }

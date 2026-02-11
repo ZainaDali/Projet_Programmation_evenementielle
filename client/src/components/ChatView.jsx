@@ -5,14 +5,7 @@ import { MessageSquare, Send, Trash2, AlertCircle, X } from 'lucide-react';
 
 const MAX_LENGTH = 500;
 
-/**
- * Composant principal de chat par salon
- * Props:
- *   roomId      {string}   - ID du salon courant
- *   roomName    {string}   - Nom du salon courant (affichage)
- *   addActivity {function} - Callback pour le journal d'activité
- */
-const ChatView = ({ roomId, roomName, addActivity }) => {
+const ChatView = ({ pollId, pollQuestion, addActivity }) => {
   const { user } = useAuth();
   const { socket, connected } = useSocket();
 
@@ -25,20 +18,18 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
-  // ── Scroll automatique vers le bas ──────────────────────────
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // ── Rejoindre le salon et charger l'historique ───────────────
   useEffect(() => {
-    if (!socket || !connected || !roomId) return;
+    if (!socket || !connected || !pollId) return;
 
     setLoading(true);
     setMessages([]);
     setError(null);
 
-    socket.emit('chat:joinRoom', { roomId }, (response) => {
+    socket.emit('chat:joinPoll', { pollId }, (response) => {
       setLoading(false);
       if (response && response.success) {
         setMessages(response.data || []);
@@ -49,23 +40,21 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
       }
     });
 
-    // Quitter la room Socket.IO à la fermeture
     return () => {
-      socket.emit('chat:leaveRoom', { roomId });
+      socket.emit('chat:leavePoll', { pollId });
     };
-  }, [socket, connected, roomId]);
+  }, [socket, connected, pollId]);
 
-  // ── Écoute des nouveaux messages en temps réel ───────────────
   useEffect(() => {
     if (!socket) return;
 
     const handleNewMessage = (data) => {
-      if (data?.message?.roomId !== roomId) return;
+      if (data?.message?.pollId !== pollId) return;
       setMessages(prev => [...prev, data.message]);
     };
 
     const handleMessageDeleted = (data) => {
-      if (data?.roomId !== roomId) return;
+      if (data?.pollId !== pollId) return;
       setMessages(prev =>
         prev.map(m =>
           m.id === data.messageId
@@ -82,14 +71,12 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
       socket.off('chat:new_message', handleNewMessage);
       socket.off('chat:message_deleted', handleMessageDeleted);
     };
-  }, [socket, roomId]);
+  }, [socket, pollId]);
 
-  // ── Scroll quand les messages changent ──────────────────────
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // ── Envoi d'un message ───────────────────────────────────────
   const handleSend = () => {
     const content = inputValue.trim();
     if (!content || !socket || !connected || sending) return;
@@ -102,12 +89,12 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
     setSending(true);
     setError(null);
 
-    socket.emit('chat:send', { roomId, content }, (response) => {
+    socket.emit('chat:send', { pollId, content }, (response) => {
       setSending(false);
       if (response && response.success) {
         setInputValue('');
         inputRef.current?.focus();
-        if (addActivity) addActivity(`Message dans "${roomName}"`, 'system');
+        if (addActivity) addActivity(`Message dans "${pollQuestion}"`, 'system');
       } else {
         const code = response?.error?.code || 'INTERNAL_ERROR';
         const msg = response?.error?.message || "Erreur lors de l'envoi";
@@ -116,7 +103,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
     });
   };
 
-  // ── Suppression d'un message ─────────────────────────────────
   const handleDelete = (messageId) => {
     if (!socket || !window.confirm('Supprimer ce message ?')) return;
 
@@ -130,7 +116,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
     });
   };
 
-  // ── Envoi sur Entrée (Shift+Entrée = saut de ligne) ──────────
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -138,7 +123,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
     }
   };
 
-  // ── Formatage de l'heure ─────────────────────────────────────
   const formatTime = (dateStr) => {
     const d = new Date(dateStr);
     return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -148,21 +132,18 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
     !msg.deleted &&
     (msg.senderId === user?.id || user?.role === 'admin' || user?.role === 'moderator');
 
-  // ── Rendu ────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
-      {/* En-tête */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200">
         <MessageSquare className="w-5 h-5 text-slate-600" />
         <div>
           <h2 className="text-lg font-semibold text-slate-800">
-            {roomName || 'Chat'}
+            {pollQuestion || 'Chat'}
           </h2>
-          <p className="text-xs text-slate-500">Chat du salon</p>
+          <p className="text-xs text-slate-500">Chat du sondage</p>
         </div>
       </div>
 
-      {/* Toast erreur */}
       {error && (
         <div className="mx-4 mt-3 flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -178,7 +159,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
         </div>
       )}
 
-      {/* Liste des messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12">
@@ -198,7 +178,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
                 key={msg.id}
                 className={`flex gap-3 group ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}
               >
-                {/* Avatar */}
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0 ${
                     isOwn ? 'bg-slate-700' : 'bg-slate-400'
@@ -207,7 +186,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
                   {msg.senderUsername.charAt(0).toUpperCase()}
                 </div>
 
-                {/* Bulle */}
                 <div className={`max-w-xs lg:max-w-md ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
                   {!isOwn && (
                     <span className="text-xs text-slate-500 mb-1 ml-1">
@@ -225,7 +203,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
                   >
                     {msg.content}
 
-                    {/* Bouton supprimer (hover) */}
                     {canDelete(msg) && (
                       <button
                         onClick={() => handleDelete(msg.id)}
@@ -247,7 +224,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
         <div ref={bottomRef} />
       </div>
 
-      {/* Zone de saisie */}
       <div className="px-4 py-3 border-t border-slate-200">
         {!connected && (
           <p className="text-xs text-amber-600 text-center mb-2">
@@ -268,7 +244,6 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
               className="w-full px-4 py-2.5 pr-14 border border-slate-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-slate-700 focus:border-transparent text-sm disabled:bg-slate-50 disabled:text-slate-400"
               style={{ minHeight: '44px', maxHeight: '120px' }}
             />
-            {/* Compteur de caractères */}
             <span
               className={`absolute bottom-2.5 right-3 text-xs ${
                 inputValue.length > MAX_LENGTH * 0.9 ? 'text-red-400' : 'text-slate-400'
