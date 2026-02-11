@@ -59,6 +59,15 @@ const Dashboard = () => {
     socket.on('room:userLeft', (data) => {
       if (data && data.username && currentRoom?.id === data.roomId) addActivity(`${data.username} a quitté`, 'offline');
     });
+    // Écouter l'expulsion d'un salon (quand un admin retire l'utilisateur)
+    socket.on('room:kicked', (data) => {
+      if (data && data.roomName) {
+        addActivity(`Vous avez été retiré du salon "${data.roomName}"`, 'offline');
+        // Si l'utilisateur est actuellement dans ce salon, le faire sortir
+        setCurrentRoom(prev => prev && prev.id === data.roomId ? null : prev);
+        setRoomsRefreshKey(k => k + 1);
+      }
+    });
     return () => {
       socket.off('user:online');
       socket.off('user:offline');
@@ -69,6 +78,7 @@ const Dashboard = () => {
       socket.off('poll:closed');
       socket.off('room:userJoined');
       socket.off('room:userLeft');
+      socket.off('room:kicked');
     };
   }, [socket, currentRoom]);
 

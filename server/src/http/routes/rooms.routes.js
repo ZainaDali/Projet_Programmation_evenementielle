@@ -4,7 +4,7 @@ import { roomsService } from '../../domain/services/rooms.service.js';
 import { authMiddleware } from '../middlewares/auth.http.js';
 import { requireAdmin } from '../../domain/policies/permissions.js';
 import { logger } from '../../utils/logger.js';
-import { broadcast } from '../../realtime/io.js';
+import { broadcast, emitToUser } from '../../realtime/io.js';
 import { presenceService } from '../../domain/services/presence.service.js';
 
 const router = Router();
@@ -132,6 +132,10 @@ router.put('/:roomId', authMiddleware, async (req, res, next) => {
     const { roomId } = req.params;
     const updates = updateRoomSchema.parse(req.body);
     
+    // Récupérer l'ancienne room AVANT la mise à jour pour détecter les utilisateurs retirés
+    const oldRoom = await roomsService.getRoomById(roomId);
+    const oldAllowedUserIds = oldRoom.allowedUserIds || [];
+    
     const room = await roomsService.updateRoom(
       roomId, 
       updates, 
@@ -149,6 +153,26 @@ router.put('/:roomId', authMiddleware, async (req, res, next) => {
       logger.info('📢 Broadcast room:updated envoyé');
     } catch (broadcastError) {
       logger.error('Erreur broadcast:', broadcastError.message);
+    }
+    
+    // Détecter les utilisateurs retirés et les expulser du salon
+    try {
+      const newAllowedUserIds = room.allowedUserIds || [];
+      const removedUserIds = oldAllowedUserIds.filter(id => !newAllowedUserIds.includes(id));
+      
+      if (removedUserIds.length > 0) {
+        logger.info(`🚫 ${removedUserIds.length} utilisateur(s) retiré(s) du salon ${room.name}`);
+        for (const removedUserId of removedUserIds) {
+          emitToUser(removedUserId, 'room:kicked', {
+            roomId: room.id,
+            roomName: room.name,
+            removedBy: req.user.username,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (kickError) {
+      logger.error('Erreur kick utilisateurs:', kickError.message);
     }
     
     res.status(200).json({
