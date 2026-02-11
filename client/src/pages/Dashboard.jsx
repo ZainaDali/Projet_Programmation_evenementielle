@@ -12,6 +12,7 @@ const Dashboard = () => {
   const { socket, connected } = useSocket();
   const [currentRoom, setCurrentRoom] = useState(null);
   const [activities, setActivities] = useState([]);
+  const [roomsRefreshKey, setRoomsRefreshKey] = useState(0);
 
   const addActivity = (message, type = 'system') => {
     setActivities(prev => [{ id: Date.now(), message, type, time: new Date().toLocaleTimeString('fr-FR') }, ...prev].slice(0, 50));
@@ -75,9 +76,18 @@ const Dashboard = () => {
           <Sidebar />
           <main className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden">
             {currentRoom ? (
-              <RoomDetail room={currentRoom} onLeave={() => setCurrentRoom(null)} addActivity={addActivity} />
+              <RoomDetail
+                room={currentRoom}
+                onLeave={() => setCurrentRoom(null)}
+                onRoomDeleted={() => {
+                  setCurrentRoom(null);
+                  setRoomsRefreshKey(k => k + 1);
+                }}
+                onRoomUpdated={(updated) => setCurrentRoom(updated)}
+                addActivity={addActivity}
+              />
             ) : (
-              <RoomsList onRoomSelect={setCurrentRoom} addActivity={addActivity} />
+              <RoomsList onRoomSelect={setCurrentRoom} addActivity={addActivity} refreshKey={roomsRefreshKey} />
             )}
           </main>
           <ActivityLog activities={activities} />

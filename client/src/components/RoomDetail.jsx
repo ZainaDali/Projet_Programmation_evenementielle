@@ -1,15 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { ArrowLeft, BarChart3, Plus, X, Check } from 'lucide-react';
+import { API_URL } from '../config';
+import { ArrowLeft, BarChart3, Plus, X, Check, Pencil, Trash2, Home, Globe, Lock, Users } from 'lucide-react';
 
-const RoomDetail = ({ room, onLeave, addActivity }) => {
+const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }) => {
   const { user, token } = useAuth();
   const { socket } = useSocket();
   const [polls, setPolls] = useState([]);
   const [showCreatePoll, setShowCreatePoll] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
+  const [showEditRoom, setShowEditRoom] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editAccessType, setEditAccessType] = useState('public');
+  const [editAllowedUserIds, setEditAllowedUserIds] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -92,6 +100,76 @@ const RoomDetail = ({ room, onLeave, addActivity }) => {
     if (pollOptions.length < 6) setPollOptions([...pollOptions, '']);
   };
 
+  const canManageRoom = room.creatorId === user?.id || user?.role === 'admin';
+
+  const openEditRoom = async () => {
+    try {
+      const [roomRes, usersRes] = await Promise.all([
+        fetch(`${API_URL}/rooms/${room.id}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_URL}/rooms/users`, { headers: { 'Authorization': `Bearer ${token}` } }),
+      ]);
+      const roomData = await roomRes.json();
+      const usersData = await usersRes.json();
+      if (roomData?.success && roomData.data) {
+        const fullRoom = roomData.data;
+        setEditName(fullRoom.name);
+        setEditDescription(fullRoom.description || '');
+        setEditAccessType(fullRoom.accessType || 'public');
+        setEditAllowedUserIds(fullRoom.allowedUserIds || []);
+      }
+      if (usersData?.success && usersData.data) setAllUsers(usersData.data);
+    } catch (e) {}
+    setShowEditRoom(true);
+  };
+
+  const handleUpdateRoom = async (e) => {
+    e.preventDefault();
+    setEditLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/rooms/${room.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDescription.trim(),
+          accessType: editAccessType,
+          allowedUserIds: editAccessType === 'selected' ? editAllowedUserIds : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data?.success && data.data) {
+        onRoomUpdated && onRoomUpdated(data.data);
+        addActivity(`Salon "${editName}" modifié`, 'system');
+        setShowEditRoom(false);
+      } else {
+        alert(data?.error?.message || 'Erreur');
+      }
+    } catch (err) {
+      alert('Erreur de connexion');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeleteRoom = async () => {
+    if (!confirm('Supprimer ce salon ? Cette action est irréversible.')) return;
+    try {
+      const res = await fetch(`${API_URL}/rooms/${room.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data?.success) {
+        addActivity(`Salon "${room.name}" supprimé`, 'system');
+        onRoomDeleted && onRoomDeleted();
+      } else {
+        alert(data?.error?.message || 'Erreur');
+      }
+    } catch (err) {
+      alert('Erreur de connexion');
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="border-b border-slate-200 p-5 flex items-center gap-4">
@@ -108,15 +186,37 @@ const RoomDetail = ({ room, onLeave, addActivity }) => {
             {room.accessType === 'private' ? 'Privé' : room.accessType === 'selected' ? 'Sélectionné' : 'Public'}
           </span>
         </div>
-        {user?.role === 'admin' && (
-          <button
-            onClick={() => setShowCreatePoll(true)}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Nouveau sondage
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {canManageRoom && (
+            <>
+              <button
+                onClick={openEditRoom}
+                className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+                title="Modifier le salon"
+              >
+                <Pencil className="w-4 h-4" />
+                Modifier
+              </button>
+              <button
+                onClick={handleDeleteRoom}
+                className="flex items-center gap-2 px-4 py-2 border border-red-200 rounded-lg hover:bg-red-50 text-red-700 text-sm font-medium transition-colors"
+                title="Supprimer le salon"
+              >
+                <Trash2 className="w-4 h-4" />
+                Supprimer
+              </button>
+            </>
+          )}
+          {user?.role === 'admin' && (
+            <button
+              onClick={() => setShowCreatePoll(true)}
+              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Nouveau sondage
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
@@ -255,6 +355,90 @@ const RoomDetail = ({ room, onLeave, addActivity }) => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showEditRoom && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowEditRoom(false)}>
+          <div className="bg-white rounded-xl border border-slate-200 p-6 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-6">
+              <Home className="w-5 h-5 text-slate-600" />
+              <h3 className="text-xl font-semibold text-slate-800">Modifier le salon</h3>
+            </div>
+            <form onSubmit={handleUpdateRoom} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Nom</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                  minLength={3}
+                  maxLength={50}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Description</label>
+                <input
+                  type="text"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  maxLength={200}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Type d'accès</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+                    <input type="radio" name="editAccessType" value="public" checked={editAccessType === 'public'} onChange={(e) => setEditAccessType(e.target.value)} className="text-slate-800" />
+                    <Globe className="w-4 h-4 text-slate-500" />
+                    <span className="text-sm text-slate-700">Public</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+                    <input type="radio" name="editAccessType" value="private" checked={editAccessType === 'private'} onChange={(e) => setEditAccessType(e.target.value)} className="text-slate-800" />
+                    <Lock className="w-4 h-4 text-slate-500" />
+                    <span className="text-sm text-slate-700">Privé</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+                    <input type="radio" name="editAccessType" value="selected" checked={editAccessType === 'selected'} onChange={(e) => setEditAccessType(e.target.value)} className="text-slate-800" />
+                    <Users className="w-4 h-4 text-slate-500" />
+                    <span className="text-sm text-slate-700">Sélectionné</span>
+                  </label>
+                </div>
+              </div>
+              {editAccessType === 'selected' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Utilisateurs autorisés</label>
+                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-3">
+                    {allUsers.filter(u => u.id !== user?.id).map(u => (
+                      <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editAllowedUserIds.includes(u.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setEditAllowedUserIds([...editAllowedUserIds, u.id]);
+                            else setEditAllowedUserIds(editAllowedUserIds.filter(id => id !== u.id));
+                          }}
+                          className="text-slate-800"
+                        />
+                        <span className="text-sm text-slate-700">{u.username}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button type="submit" disabled={editLoading} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50">
+                  {editLoading ? 'Enregistrement...' : 'Enregistrer'}
+                </button>
+                <button type="button" onClick={() => setShowEditRoom(false)} className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-lg font-medium transition-colors">
+                  Annuler
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

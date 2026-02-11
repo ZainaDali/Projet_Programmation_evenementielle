@@ -4,7 +4,7 @@ import { API_URL } from '../config';
 import CreateRoomModal from './CreateRoomModal';
 import { Home, Plus, BarChart3, ArrowRight, Lock, Users, Globe } from 'lucide-react';
 
-const RoomsList = ({ onRoomSelect, addActivity }) => {
+const RoomsList = ({ onRoomSelect, addActivity, refreshKey = 0 }) => {
   const { user, token } = useAuth();
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ const RoomsList = ({ onRoomSelect, addActivity }) => {
 
   useEffect(() => {
     loadRooms();
-  }, []);
+  }, [refreshKey]);
 
   const handleRoomCreated = () => {
     loadRooms();
