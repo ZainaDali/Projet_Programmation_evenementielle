@@ -97,19 +97,23 @@ export function setupPollHandlers(socket) {
         throw createError('Missing required fields', 400, 'INVALID_PAYLOAD');
       }
       
-      const updatedPoll = await pollsService.vote(
+      const result = await pollsService.vote(
         { pollId, optionId },
         userId,
         username
       );
       
+      const { action, poll: updatedPoll } = result;
+      
       getIO().to(`room:${updatedPoll.roomId}`).emit('poll:results', {
         poll: updatedPoll,
         votedBy: username,
+        action,
       });
       
       if (typeof callback === 'function') {
-        callback({ success: true, data: updatedPoll });
+        const userVote = action === 'unvoted' ? null : optionId;
+        callback({ success: true, data: { ...updatedPoll, userVote, action } });
       }
     } catch (error) {
       logger.error('Error voting:', error.message);

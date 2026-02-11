@@ -97,6 +97,10 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
     setPolls(prev => prev.map(p => p.id === updatedPoll.id ? { ...updatedPoll, userVote: p.userVote } : p));
   };
 
+  const updatePollWithUserVote = (updatedPoll, newUserVote) => {
+    setPolls(prev => prev.map(p => p.id === updatedPoll.id ? { ...updatedPoll, userVote: newUserVote } : p));
+  };
+
   const handleCreatePoll = () => {
     const question = pollQuestion.trim();
     const options = pollOptions.map(o => o.trim()).filter(o => o.length > 0);
@@ -119,7 +123,10 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
   const handleVote = (pollId, optionId) => {
     if (!socket) return;
     socket.emit('poll:vote', { pollId, optionId }, (response) => {
-      if (response && !response.success) {
+      if (response && response.success && response.data) {
+        const { action, userVote, ...pollData } = response.data;
+        updatePollWithUserVote(pollData, userVote);
+      } else if (response && !response.success) {
         alert(response.error ? response.error.message : 'Erreur lors du vote');
       }
     });
@@ -323,20 +330,23 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
                       const votes = option.votes || 0;
                       const percent = total > 0 ? Math.round((votes / total) * 100) : 0;
                       const isUserChoice = poll.userVote === option.id;
+                      const canClick = !isClosed;
                       return (
                         <div
                           key={option.id}
-                          onClick={() => !isClosed && !userVoted && handleVote(poll.id, option.id)}
+                          onClick={() => canClick && handleVote(poll.id, option.id)}
                           className={`bg-white border-2 rounded-lg p-4 transition-all ${
-                            isUserChoice ? 'border-slate-800 bg-slate-50' :
-                            !isClosed && !userVoted ? 'border-slate-200 hover:border-slate-400 cursor-pointer' :
+                            isUserChoice ? 'border-slate-800 bg-slate-50 cursor-pointer hover:border-red-300 hover:bg-red-50' :
+                            canClick ? 'border-slate-200 hover:border-slate-400 cursor-pointer' :
                             'border-slate-200'
                           }`}
+                          title={isUserChoice ? 'Cliquez pour annuler votre vote' : canClick ? 'Cliquez pour voter' : ''}
                         >
                           <div className="flex justify-between items-center">
                             <div className="flex-1 flex items-center gap-2">
                               {isUserChoice && <Check className="w-4 h-4 text-slate-700" />}
                               <span>{option.text}</span>
+                              {isUserChoice && <span className="text-xs text-slate-400 ml-1">(cliquez pour annuler)</span>}
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -351,7 +361,8 @@ const RoomDetail = ({ room, onLeave, onRoomDeleted, onRoomUpdated, addActivity }
                   </div>
                   <div className="text-sm text-slate-500 text-right mb-3">
                     Total: {total} vote{total > 1 ? 's' : ''}
-                    {userVoted && ' - Vous avez voté'}
+                    {userVoted && !isClosed && ' - Vous avez voté (modifiable)'}
+                    {userVoted && isClosed && ' - Vous avez voté'}
                   </div>
                   {canClose && (
                     <button

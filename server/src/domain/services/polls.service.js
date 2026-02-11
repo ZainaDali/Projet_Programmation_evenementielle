@@ -92,14 +92,44 @@ export const pollsService = {
       throw Errors.POLL_CLOSED;
     }
     
-    const existingVote = await votesCollection.findOne({ pollId, userId });
-    if (existingVote) {
-      throw Errors.ALREADY_VOTED;
-    }
-    
     const option = poll.options.find(opt => opt.id === optionId);
     if (!option) {
       throw Errors.INVALID_OPTION;
+    }
+    
+    const existingVote = await votesCollection.findOne({ pollId, userId });
+    
+    if (existingVote) {
+      if (existingVote.optionId === optionId) {
+        await votesCollection.deleteOne({ id: existingVote.id });
+        await pollsCollection.updateOne(
+          { id: pollId, 'options.id': optionId },
+          { 
+            $inc: { 'options.$.votes': -1, totalVotes: -1 },
+            $set: { updatedAt: new Date() }
+          }
+        );
+        const updatedPoll = await this.getPollById(pollId);
+        logger.info(`Vote cancelled: ${username} unvoted option ${optionId} in poll ${pollId}`);
+        return { action: 'unvoted', poll: this.formatPoll(updatedPoll) };
+      } else {
+        const oldOptionId = existingVote.optionId;
+        await votesCollection.updateOne(
+          { id: existingVote.id },
+          { $set: { optionId, votedAt: new Date() } }
+        );
+        await pollsCollection.updateOne(
+          { id: pollId, 'options.id': oldOptionId },
+          { $inc: { 'options.$.votes': -1 } }
+        );
+        await pollsCollection.updateOne(
+          { id: pollId, 'options.id': optionId },
+          { $inc: { 'options.$.votes': 1 }, $set: { updatedAt: new Date() } }
+        );
+        const updatedPoll = await this.getPollById(pollId);
+        logger.info(`Vote changed: ${username} changed from option ${oldOptionId} to ${optionId} in poll ${pollId}`);
+        return { action: 'changed', poll: this.formatPoll(updatedPoll) };
+      }
     }
     
     const vote = {
@@ -122,19 +152,21 @@ export const pollsService = {
     );
     
     const updatedPoll = await this.getPollById(pollId);
-    
     logger.info(`Vote recorded: ${username} voted for option ${optionId} in poll ${pollId}`);
-    
+    return { action: 'voted', poll: this.formatPoll(updatedPoll) };
+  },
+
+  formatPoll(poll) {
     return {
-      id: updatedPoll.id,
-      roomId: updatedPoll.roomId,
-      question: updatedPoll.question,
-      options: updatedPoll.options,
-      status: updatedPoll.status,
-      creatorId: updatedPoll.creatorId,
-      creatorUsername: updatedPoll.creatorUsername,
-      createdAt: updatedPoll.createdAt,
-      totalVotes: updatedPoll.totalVotes,
+      id: poll.id,
+      roomId: poll.roomId,
+      question: poll.question,
+      options: poll.options,
+      status: poll.status,
+      creatorId: poll.creatorId,
+      creatorUsername: poll.creatorUsername,
+      createdAt: poll.createdAt,
+      totalVotes: poll.totalVotes,
     };
   },
   
