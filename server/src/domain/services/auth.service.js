@@ -10,38 +10,75 @@ import { logger } from '../../utils/logger.js';
  */
 export const authService = {
   /**
-   * Login ou création d'utilisateur
+   * Inscription d'un nouvel utilisateur
    * @param {string} username - Nom d'utilisateur
-   * @param {string} password - Mot de passe (optionnel, simple)
+   * @param {string} password - Mot de passe
+   * @returns {Promise<{message: string}>}
+   */
+  async register(username, password) {
+    const usersCollection = getCollection(COLLECTIONS.USERS);
+    
+    // Vérifier si l'utilisateur existe déjà
+    const existingUser = await usersCollection.findOne({ username });
+    if (existingUser) {
+      throw Errors.USERNAME_TAKEN;
+    }
+    
+    // Vérifier si c'est le premier utilisateur (sera admin)
+    const userCount = await usersCollection.countDocuments();
+    const role = userCount === 0 ? ROLES.ADMIN : ROLES.USER;
+    
+    // Créer le nouvel utilisateur
+    const user = {
+      id: generateUserId(),
+      username,
+      password,
+      role,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    await usersCollection.insertOne(user);
+    
+    if (role === ROLES.ADMIN) {
+      logger.success(`👑 Premier utilisateur (ADMIN) créé: ${username}`);
+    } else {
+      logger.success(`👤 Nouvel utilisateur enregistré: ${username}`);
+    }
+    
+    return {
+      message: 'User registered successfully',
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+      },
+    };
+  },
+
+  /**
+   * Connexion utilisateur
+   * @param {string} username - Nom d'utilisateur
+   * @param {string} password - Mot de passe
    * @returns {Promise<{token: string, user: object}>}
    */
-  async login(username, password = null) {
+  async login(username, password) {
     const usersCollection = getCollection(COLLECTIONS.USERS);
     const sessionsCollection = getCollection(COLLECTIONS.SESSIONS);
     
     // Rechercher l'utilisateur
-    let user = await usersCollection.findOne({ username });
+    const user = await usersCollection.findOne({ username });
     
-    if (user) {
-      // Utilisateur existant - vérifier le mot de passe si fourni
-      if (password && user.password && user.password !== password) {
-        throw Errors.INVALID_CREDENTIALS;
-      }
-      logger.info(`🔑 Connexion utilisateur existant: ${username}`);
-    } else {
-      // Créer un nouvel utilisateur
-      user = {
-        id: generateUserId(),
-        username,
-        password: password || null,
-        role: ROLES.USER,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      
-      await usersCollection.insertOne(user);
-      logger.success(`👤 Nouvel utilisateur créé: ${username}`);
+    if (!user) {
+      throw Errors.INVALID_CREDENTIALS;
     }
+    
+    // Vérifier le mot de passe
+    if (user.password !== password) {
+      throw Errors.INVALID_CREDENTIALS;
+    }
+    
+    logger.info(`🔑 Connexion utilisateur: ${username}`);
     
     // Générer un token
     const token = generateToken();
@@ -59,7 +96,7 @@ export const authService = {
     await sessionsCollection.insertOne(session);
     logger.info(`🎫 Session créée pour: ${username}`);
     
-    // Retourner le token et les infos utilisateur (sans le mot de passe)
+    // Retourner le token et les infos utilisateur
     return {
       token,
       user: {

@@ -18,14 +18,19 @@ export function errorHandler(err, req, res, next) {
     });
   }
   
-  // Erreur de validation Zod
+  // Erreur de validation Zod (v3: err.errors, v4: err.issues)
   if (err.name === 'ZodError') {
+    const issues = err.issues || err.errors || [];
+    const first = issues[0];
+    const message = first
+      ? (typeof first.message === 'string' ? first.message : (first.message?.message || 'Champ invalide'))
+      : 'Données invalides';
     return res.status(400).json({
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'Validation failed',
-        details: err.errors,
+        message,
+        details: issues,
       },
     });
   }

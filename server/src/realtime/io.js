@@ -1,6 +1,7 @@
 import { Server } from 'socket.io';
 import { authSocketMiddleware } from './middlewares/auth.socket.js';
 import { presenceService } from '../domain/services/presence.service.js';
+import { setupPollHandlers } from './handlers/polls.handler.js';
 import { logger } from '../utils/logger.js';
 
 let io = null;
@@ -40,6 +41,9 @@ export function initSocketIO(httpServer) {
       username,
       timestamp: new Date().toISOString(),
     });
+    
+    // ========== HANDLERS DE SONDAGES ==========
+    setupPollHandlers(socket);
     
     // ========== ÉVÉNEMENTS DE BASE ==========
     

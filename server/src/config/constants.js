@@ -11,6 +11,8 @@ export const COLLECTIONS = {
   SESSIONS: 'sessions',
   PRESENCE: 'presence',
   ROOMS: 'rooms',
+  POLLS: 'polls',
+  VOTES: 'votes',
 };
 
 // Statuts de session
@@ -32,4 +34,14 @@ export const ACCESS_TYPES = {
   PUBLIC: 'public',     // Tout le monde peut accéder
   PRIVATE: 'private',   // Personne ne peut accéder (sauf créateur)
   SELECTED: 'selected', // Uniquement les utilisateurs sélectionnés
+};
+
+export const POLL_STATUS = {
+  OPEN: 'open',
+  CLOSED: 'closed',
+};
+
+export const RATE_LIMITS = {
+  VOTE_MAX_PER_MINUTE: 10,
+  POLL_CREATE_MAX_PER_MINUTE: 3,
 };

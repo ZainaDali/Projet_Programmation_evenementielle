@@ -12,19 +12,49 @@ const loginSchema = z.object({
     .min(3, 'Username must be at least 3 characters')
     .max(20, 'Username must be at most 20 characters')
     .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers and underscores'),
-  password: z.string().optional(),
+  password: z.string().min(1, 'Password is required'),
+});
+
+// Schéma de validation pour le register
+const registerSchema = z.object({
+  username: z.string()
+    .trim()
+    .min(3, 'Le nom d\'utilisateur doit faire au moins 3 caractères')
+    .max(20, 'Le nom d\'utilisateur doit faire au plus 20 caractères')
+    .regex(/^[a-zA-Z0-9_]+$/, 'Lettres, chiffres et tirets bas uniquement (ex: john_doe)'),
+  password: z.string()
+    .min(6, 'Le mot de passe doit faire au moins 6 caractères'),
+});
+
+/**
+ * POST /auth/register
+ * Inscription d'un nouvel utilisateur
+ */
+router.post('/register', async (req, res, next) => {
+  try {
+    const { username, password } = registerSchema.parse(req.body);
+    
+    const result = await authService.register(username, password);
+    
+    logger.success(`✅ Utilisateur créé: ${username}`);
+    
+    res.status(201).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * POST /auth/login
- * Authentification ou création d'utilisateur
+ * Authentification utilisateur
  */
 router.post('/login', async (req, res, next) => {
   try {
-    // Valider les données d'entrée
     const { username, password } = loginSchema.parse(req.body);
     
-    // Appeler le service d'authentification
     const result = await authService.login(username, password);
     
     logger.success(`✅ Login réussi: ${username}`);

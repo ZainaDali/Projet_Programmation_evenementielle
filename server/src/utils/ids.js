@@ -21,6 +21,14 @@ export function generateRoomId() {
   return `room_${nanoid(8)}`;
 }
 
-// TODO: À implémenter par les développeurs
-// export function generateMessageId() { return `msg_${nanoid(16)}`; }
-// export function generatePollId() { return `poll_${nanoid(10)}`; }
+export function generatePollId() {
+  return `poll_${nanoid(10)}`;
+}
+
+export function generateVoteId() {
+  return `vote_${nanoid(12)}`;
+}
+
+export function generateMessageId() {
+  return `msg_${nanoid(16)}`;
+}
