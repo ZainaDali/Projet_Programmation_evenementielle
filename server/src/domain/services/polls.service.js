@@ -3,50 +3,34 @@ import { COLLECTIONS, POLL_STATUS, POLL_ACCESS_TYPES } from '../../config/consta
 import { generatePollId, generateVoteId } from '../../utils/ids.js';
 import { Errors, createError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
+import { Poll } from '../entities/Poll.js';
+
 
 export const pollsService = {
   // ========== CREATE ==========
-  async createPoll({ question, description = '', options, accessType = 'public', allowedUserIds = [] }, creatorId, creatorUsername) {
-    const pollsCollection = getCollection(COLLECTIONS.POLLS);
+  // ========== CREATE ==========
+async createPoll(
+  { question, description = '', options, accessType = 'public', allowedUserIds = [] },
+  creatorId,
+  creatorUsername
+) {
+  const pollsCollection = getCollection(COLLECTIONS.POLLS);
 
-    if (!Array.isArray(options) || options.length < 2 || options.length > 6) {
-      throw Errors.INVALID_POLL_OPTIONS;
-    }
+  // On délègue la validation principale à l'entité
+  const poll = new Poll(
+    { question, description, options, accessType, allowedUserIds },
+    creatorId,
+    creatorUsername
+  );
 
-    if (!Object.values(POLL_ACCESS_TYPES).includes(accessType)) {
-      throw createError('Invalid access type', 400, 'INVALID_ACCESS_TYPE');
-    }
+  await pollsCollection.insertOne(poll);
 
-    const pollOptions = options.map((text, index) => ({
-      id: index,
-      text: text.trim(),
-      votes: 0,
-    }));
+  logger.success(
+    `Poll created: ${poll.id} by ${creatorUsername} (${poll.accessType})`
+  );
 
-    const poll = {
-      id: generatePollId(),
-      question: question.trim(),
-      description: description.trim(),
-      options: pollOptions,
-      status: POLL_STATUS.OPEN,
-      accessType,
-      allowedUserIds: accessType === POLL_ACCESS_TYPES.SELECTED
-        ? [...new Set([...allowedUserIds, creatorId])]
-        : [],
-      participants: [],
-      kickedUserIds: [],
-      creatorId,
-      creatorUsername,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      totalVotes: 0,
-    };
-
-    await pollsCollection.insertOne(poll);
-    logger.success(`Poll created: ${poll.id} by ${creatorUsername} (${accessType})`);
-
-    return this.formatPoll(poll);
-  },
+  return this.formatPoll(poll);
+},
 
   // ========== READ ==========
   async getPolls() {
