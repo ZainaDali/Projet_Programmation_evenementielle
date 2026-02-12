@@ -205,8 +205,10 @@ export function setupPollHandlers(socket) {
 
   // ========== GET STATE ==========
   socket.on('poll:getState', async (payload, callback) => {
+    logger.info(`📊 poll:getState received from ${username} (socket: ${socket.id}), callback type: ${typeof callback}`);
     try {
       const state = await pollsService.getPollsState(userId);
+      logger.info(`📊 poll:getState success: ${state.polls.length} polls found`);
       if (typeof callback === 'function') callback({ success: true, data: state });
     } catch (error) {
       logger.error('Error getting poll state:', error.message);
