@@ -29,9 +29,9 @@ export function setupChatHandlers(socket) {
         throw Errors.INVALID_PAYLOAD;
       }
 
-      const { roomId, content } = payload;
+      const { pollId, content } = payload;
 
-      if (!roomId || !content) {
+      if (!pollId || !content) {
         throw Errors.INVALID_PAYLOAD;
       }
 
@@ -40,14 +40,17 @@ export function setupChatHandlers(socket) {
       }
 
       const message = await chatService.sendMessage(
-        { roomId, content },
+        { pollId, content },
         userId,
-        username
+        username,
+        role
       );
 
-      getIO().to(`room:${roomId}`).emit('chat:new_message', { message });
+      getIO().to(`poll:${pollId}`).emit('chat:new_message', {
+        message,
+      });
 
-      logger.info(`chat:send - ${username} dans salon ${roomId}`);
+      logger.info(`chat:send - ${username} dans sondage ${pollId}`);
 
       if (typeof callback === 'function') {
         callback({ success: true, data: message });
@@ -68,14 +71,15 @@ export function setupChatHandlers(socket) {
 
   socket.on('chat:history', async (payload, callback) => {
     try {
-      if (!payload || !payload.roomId) {
+      if (!payload || !payload.pollId) {
         throw Errors.INVALID_PAYLOAD;
       }
 
-      const { roomId } = payload;
-      const messages = await chatService.getHistory(roomId, userId);
+      const { pollId } = payload;
 
-      logger.info(`chat:history - ${username} demande historique salon ${roomId}`);
+      const messages = await chatService.getHistory(pollId, userId, role);
+
+      logger.info(`chat:history - ${username} demande historique sondage ${pollId}`);
 
       if (typeof callback === 'function') {
         callback({ success: true, data: messages });
@@ -103,9 +107,9 @@ export function setupChatHandlers(socket) {
       const { messageId } = payload;
       const deletedMessage = await chatService.deleteMessage(messageId, userId, role);
 
-      getIO().to(`room:${deletedMessage.roomId}`).emit('chat:message_deleted', {
+      getIO().to(`poll:${deletedMessage.pollId}`).emit('chat:message_deleted', {
         messageId: deletedMessage.id,
-        roomId: deletedMessage.roomId,
+        pollId: deletedMessage.pollId,
       });
 
       logger.info(`chat:delete - message ${messageId} supprimé par ${username}`);
@@ -127,24 +131,25 @@ export function setupChatHandlers(socket) {
     }
   });
 
-  socket.on('chat:joinRoom', async (payload, callback) => {
+  socket.on('chat:joinPoll', async (payload, callback) => {
     try {
-      if (!payload || !payload.roomId) {
+      if (!payload || !payload.pollId) {
         throw Errors.INVALID_PAYLOAD;
       }
 
-      const { roomId } = payload;
-      const messages = await chatService.getHistory(roomId, userId);
+      const { pollId } = payload;
 
-      socket.join(`room:${roomId}`);
+      const messages = await chatService.getHistory(pollId, userId, role);
 
-      logger.info(`chat:joinRoom - ${username} rejoint salon ${roomId}`);
+      socket.join(`poll:${pollId}`);
+
+      logger.info(`chat:joinPoll - ${username} rejoint sondage ${pollId}`);
 
       if (typeof callback === 'function') {
         callback({ success: true, data: messages });
       }
     } catch (error) {
-      logger.error('chat:joinRoom error:', error.message);
+      logger.error('chat:joinPoll error:', error.message);
       if (typeof callback === 'function') {
         callback({
           success: false,
@@ -157,10 +162,10 @@ export function setupChatHandlers(socket) {
     }
   });
 
-  socket.on('chat:leaveRoom', (payload) => {
-    if (payload && payload.roomId) {
-      socket.leave(`room:${payload.roomId}`);
-      logger.info(`chat:leaveRoom - ${username} quitte salon ${payload.roomId}`);
+  socket.on('chat:leavePoll', (payload) => {
+    if (payload && payload.pollId) {
+      socket.leave(`poll:${payload.pollId}`);
+      logger.info(`chat:leavePoll - ${username} quitte sondage ${payload.pollId}`);
     }
   });
 }

@@ -5,15 +5,15 @@ import { Errors } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 
 export const chatService = {
-  async sendMessage({ roomId, content }, senderId, senderUsername) {
-    const roomsCollection = getCollection(COLLECTIONS.ROOMS);
-    const room = await roomsCollection.findOne({ id: roomId });
+  async sendMessage({ pollId, content }, senderId, senderUsername, senderRole) {
+    const pollsCollection = getCollection(COLLECTIONS.POLLS);
+    const poll = await pollsCollection.findOne({ id: pollId });
 
-    if (!room) {
-      throw Errors.ROOM_NOT_FOUND;
+    if (!poll) {
+      throw Errors.NOT_FOUND;
     }
 
-    const hasAccess = this.userHasRoomAccess(room, senderId);
+    const hasAccess = this.userHasPollAccess(poll, senderId, senderRole);
     if (!hasAccess) {
       throw Errors.FORBIDDEN;
     }
@@ -30,7 +30,7 @@ export const chatService = {
 
     const message = {
       id: generateMessageId(),
-      roomId,
+      pollId,
       content: content.trim(),
       senderId,
       senderUsername,
@@ -39,29 +39,30 @@ export const chatService = {
     };
 
     await messagesCollection.insertOne(message);
-    await this.pruneMessages(roomId);
 
-    logger.info(`Message envoyé dans salon ${roomId} par ${senderUsername}`);
+    await this.pruneMessages(pollId);
+
+    logger.info(`Message envoyé dans sondage ${pollId} par ${senderUsername}`);
 
     return this.formatMessage(message);
   },
 
-  async getHistory(roomId, userId) {
-    const roomsCollection = getCollection(COLLECTIONS.ROOMS);
-    const room = await roomsCollection.findOne({ id: roomId });
+  async getHistory(pollId, userId, userRole) {
+    const pollsCollection = getCollection(COLLECTIONS.POLLS);
+    const poll = await pollsCollection.findOne({ id: pollId });
 
-    if (!room) {
-      throw Errors.ROOM_NOT_FOUND;
+    if (!poll) {
+      throw Errors.NOT_FOUND;
     }
 
-    const hasAccess = this.userHasRoomAccess(room, userId);
+    const hasAccess = this.userHasPollAccess(poll, userId, userRole);
     if (!hasAccess) {
       throw Errors.FORBIDDEN;
     }
 
     const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
     const messages = await messagesCollection
-      .find({ roomId })
+      .find({ pollId })
       .sort({ createdAt: 1 })
       .limit(CHAT_LIMITS.HISTORY_SIZE)
       .toArray();
@@ -98,28 +99,31 @@ export const chatService = {
     return this.formatMessage(updated);
   },
 
-  userHasRoomAccess(room, userId) {
-    if (room.creatorId === userId) return true;
+  userHasPollAccess(poll, userId, userRole) {
+    if (userRole === 'admin') return true;
 
-    switch (room.accessType) {
-      case 'public':
-        return true;
-      case 'private':
-        return false;
-      case 'selected':
-        return Array.isArray(room.allowedUserIds) && room.allowedUserIds.includes(userId);
-      default:
-        return false;
+    if (poll.creatorId === userId) return true;
+
+    if (poll.kickedUserIds?.includes(userId)) return false;
+
+    if (!poll.accessType || poll.accessType === 'public') return true;
+
+    if (poll.accessType === 'private') return false;
+
+    if (poll.accessType === 'selected') {
+      return Array.isArray(poll.allowedUserIds) && poll.allowedUserIds.includes(userId);
     }
+
+    return true;
   },
 
-  async pruneMessages(roomId) {
+  async pruneMessages(pollId) {
     const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
-    const count = await messagesCollection.countDocuments({ roomId });
+    const count = await messagesCollection.countDocuments({ pollId });
 
     if (count > CHAT_LIMITS.HISTORY_SIZE) {
       const oldest = await messagesCollection
-        .find({ roomId })
+        .find({ pollId })
         .sort({ createdAt: 1 })
         .limit(count - CHAT_LIMITS.HISTORY_SIZE)
         .toArray();
@@ -132,7 +136,7 @@ export const chatService = {
   formatMessage(message) {
     return {
       id: message.id,
-      roomId: message.roomId,
+      pollId: message.pollId,
       content: message.content,
       senderId: message.senderId,
       senderUsername: message.senderUsername,

@@ -5,7 +5,7 @@ import { MessageSquare, Send, Trash2, AlertCircle, X } from 'lucide-react';
 
 const MAX_LENGTH = 500;
 
-const ChatView = ({ roomId, roomName, addActivity }) => {
+const ChatView = ({ pollId, pollQuestion, addActivity }) => {
   const { user } = useAuth();
   const { socket, connected } = useSocket();
 
@@ -23,13 +23,13 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
   }, []);
 
   useEffect(() => {
-    if (!socket || !connected || !roomId) return;
+    if (!socket || !connected || !pollId) return;
 
     setLoading(true);
     setMessages([]);
     setError(null);
 
-    socket.emit('chat:joinRoom', { roomId }, (response) => {
+    socket.emit('chat:joinPoll', { pollId }, (response) => {
       setLoading(false);
       if (response && response.success) {
         setMessages(response.data || []);
@@ -41,20 +41,20 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
     });
 
     return () => {
-      socket.emit('chat:leaveRoom', { roomId });
+      socket.emit('chat:leavePoll', { pollId });
     };
-  }, [socket, connected, roomId]);
+  }, [socket, connected, pollId]);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleNewMessage = (data) => {
-      if (data?.message?.roomId !== roomId) return;
+      if (data?.message?.pollId !== pollId) return;
       setMessages(prev => [...prev, data.message]);
     };
 
     const handleMessageDeleted = (data) => {
-      if (data?.roomId !== roomId) return;
+      if (data?.pollId !== pollId) return;
       setMessages(prev =>
         prev.map(m =>
           m.id === data.messageId
@@ -71,7 +71,7 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
       socket.off('chat:new_message', handleNewMessage);
       socket.off('chat:message_deleted', handleMessageDeleted);
     };
-  }, [socket, roomId]);
+  }, [socket, pollId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -89,12 +89,12 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
     setSending(true);
     setError(null);
 
-    socket.emit('chat:send', { roomId, content }, (response) => {
+    socket.emit('chat:send', { pollId, content }, (response) => {
       setSending(false);
       if (response && response.success) {
         setInputValue('');
         inputRef.current?.focus();
-        if (addActivity) addActivity(`Message dans "${roomName}"`, 'system');
+        if (addActivity) addActivity(`Message dans "${pollQuestion}"`, 'system');
       } else {
         const code = response?.error?.code || 'INTERNAL_ERROR';
         const msg = response?.error?.message || "Erreur lors de l'envoi";
@@ -138,9 +138,9 @@ const ChatView = ({ roomId, roomName, addActivity }) => {
         <MessageSquare className="w-5 h-5 text-slate-600" />
         <div>
           <h2 className="text-lg font-semibold text-slate-800">
-            {roomName || 'Chat'}
+            {pollQuestion || 'Chat'}
           </h2>
-          <p className="text-xs text-slate-500">Chat du salon</p>
+          <p className="text-xs text-slate-500">Chat du sondage</p>
         </div>
       </div>
 
