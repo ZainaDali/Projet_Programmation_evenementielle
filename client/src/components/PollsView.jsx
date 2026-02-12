@@ -36,10 +36,25 @@ const PollsView = ({ addActivity }) => {
   const [openChatPollId, setOpenChatPollId] = useState(null);
 
   // ========== LOAD ==========
-  const loadPolls = () => {
-    if (!socket || !socket.connected) return;
+  const loadPolls = (sock) => {
+    const s = sock || socket;
+    if (!s || !s.connected) {
+      console.warn('[PollsView] loadPolls called but socket not connected, skipping.');
+      return;
+    }
+
+    console.log('[PollsView] loadPolls: emitting poll:getState...');
     setLoading(true);
-    socket.emit('poll:getState', {}, (response) => {
+
+    // Timeout de sécurité : si le serveur ne répond pas en 5s, on arrête le chargement
+    const timeout = setTimeout(() => {
+      console.warn('[PollsView] poll:getState timeout - no response after 5s');
+      setLoading(false);
+    }, 5000);
+
+    s.emit('poll:getState', {}, (response) => {
+      clearTimeout(timeout);
+      console.log('[PollsView] poll:getState response:', response);
       setLoading(false);
       if (response?.success && response.data?.polls) {
         setPolls(response.data.polls);
@@ -49,19 +64,36 @@ const PollsView = ({ addActivity }) => {
     });
   };
 
-  const loadUsers = () => {
-    if (!socket || !socket.connected) return;
-    socket.emit('presence:getAllUsers');
+  const loadUsers = (sock) => {
+    const s = sock || socket;
+    if (!s || !s.connected) return;
+    s.emit('presence:getAllUsers');
   };
 
   // ========== SOCKET LISTENERS ==========
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('poll:created', () => loadPolls());
+    // When socket connects (or reconnects), load data immediately
+    const onConnect = () => {
+      console.log('[PollsView] Socket connected! Loading polls...');
+      loadPolls(socket);
+      loadUsers(socket);
+    };
+
+    // If socket is already connected when this effect runs, load immediately
+    if (socket.connected) {
+      console.log('[PollsView] Socket already connected on mount, loading polls...');
+      onConnect();
+    } else {
+      console.log('[PollsView] Socket not yet connected, waiting for connect event...');
+    }
+
+    socket.on('connect', onConnect);
+    socket.on('poll:created', () => loadPolls(socket));
     socket.on('poll:results', (data) => { if (data?.poll) updatePoll(data.poll); });
     socket.on('poll:closed', (data) => { if (data?.poll) updatePoll(data.poll); });
-    socket.on('poll:updated', (data) => { if (data?.poll) updatePoll(data.poll); loadPolls(); });
+    socket.on('poll:updated', (data) => { if (data?.poll) updatePoll(data.poll); loadPolls(socket); });
     socket.on('poll:deleted', (data) => {
       if (data?.pollId) {
         setPolls(prev => prev.filter(p => p.id !== data.pollId));
@@ -89,6 +121,7 @@ const PollsView = ({ addActivity }) => {
     });
 
     return () => {
+      socket.off('connect', onConnect);
       socket.off('poll:created');
       socket.off('poll:results');
       socket.off('poll:closed');
@@ -101,10 +134,13 @@ const PollsView = ({ addActivity }) => {
     };
   }, [socket]);
 
+  // Fallback: when connection status changes to connected, load polls
   useEffect(() => {
-    if (socket && connected) { loadPolls(); loadUsers(); }
-    else if (!connected) setLoading(true);
-  }, [socket, connected]);
+    if (socket && connected) {
+      loadPolls(socket);
+      loadUsers(socket);
+    }
+  }, [connected]);
 
   // ========== HELPERS ==========
   const updatePoll = (updatedPoll) => {
