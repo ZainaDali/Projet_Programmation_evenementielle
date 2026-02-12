@@ -168,4 +168,140 @@ export function setupChatHandlers(socket) {
       logger.info(`chat:leavePoll - ${username} quitte sondage ${payload.pollId}`);
     }
   });
+  socket.on('poll:chat:send', async (payload, callback) => {
+    try {
+      if (!payload || typeof payload !== 'object') throw Errors.INVALID_PAYLOAD;
+
+      const { pollId, content } = payload;
+      if (!pollId || !content) throw Errors.INVALID_PAYLOAD;
+
+      if (!checkChatRateLimit(userId)) throw Errors.RATE_LIMITED;
+
+      const message = await chatService.sendPollMessage(
+        { pollId, content },
+        userId,
+        username
+      );
+
+      getIO().to(`poll:${pollId}`).emit('poll:chat:new_message', { message });
+      logger.info(`poll:chat:send - ${username} dans sondage ${pollId}`);
+
+      if (typeof callback === 'function') callback({ success: true, data: message });
+    } catch (error) {
+      logger.error('poll:chat:send error:', error.message);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
+      }
+    }
+  });
+
+  socket.on('poll:chat:history', async (payload, callback) => {
+    try {
+      if (!payload || !payload.pollId) throw Errors.INVALID_PAYLOAD;
+
+      const { pollId } = payload;
+      const messages = await chatService.getPollMessages(pollId);
+
+      if (typeof callback === 'function') callback({ success: true, data: messages });
+    } catch (error) {
+      logger.error('poll:chat:history error:', error.message);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
+      }
+    }
+  });
+
+  socket.on('poll:chat:joinRoom', async (payload, callback) => {
+    try {
+      if (!payload || !payload.pollId) throw Errors.INVALID_PAYLOAD;
+
+      const { pollId } = payload;
+      const messages = await chatService.getPollMessages(pollId);
+
+      socket.join(`poll:${pollId}`);
+      logger.info(`poll:chat:joinRoom - ${username} rejoint sondage ${pollId}`);
+
+      if (typeof callback === 'function') callback({ success: true, data: messages });
+    } catch (error) {
+      logger.error('poll:chat:joinRoom error:', error.message);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
+      }
+    }
+  });
+
+  socket.on('poll:chat:leaveRoom', (payload) => {
+    if (payload && payload.pollId) {
+      socket.leave(`poll:${pollId}`); // Fix: payload.pollId, not pollId directly if not destructured
+      logger.info(`poll:chat:leaveRoom - ${username} quitte sondage ${payload.pollId}`);
+    }
+  });
+  socket.on('poll:chat:send', async (payload, callback) => {
+    try {
+      if (!payload || typeof payload !== 'object') throw Errors.INVALID_PAYLOAD;
+
+      const { pollId, content } = payload;
+      if (!pollId || !content) throw Errors.INVALID_PAYLOAD;
+
+      if (!checkChatRateLimit(userId)) throw Errors.RATE_LIMITED;
+
+      const message = await chatService.sendPollMessage(
+        { pollId, content },
+        userId,
+        username
+      );
+
+      getIO().to(`poll:${pollId}`).emit('poll:chat:new_message', { message });
+      logger.info(`poll:chat:send - ${username} dans sondage ${pollId}`);
+
+      if (typeof callback === 'function') callback({ success: true, data: message });
+    } catch (error) {
+      logger.error('poll:chat:send error:', error.message);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
+      }
+    }
+  });
+
+  socket.on('poll:chat:history', async (payload, callback) => {
+    try {
+      if (!payload || !payload.pollId) throw Errors.INVALID_PAYLOAD;
+
+      const { pollId } = payload;
+      const messages = await chatService.getPollMessages(pollId);
+
+      if (typeof callback === 'function') callback({ success: true, data: messages });
+    } catch (error) {
+      logger.error('poll:chat:history error:', error.message);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
+      }
+    }
+  });
+
+  socket.on('poll:chat:joinRoom', async (payload, callback) => {
+    try {
+      if (!payload || !payload.pollId) throw Errors.INVALID_PAYLOAD;
+
+      const { pollId } = payload;
+      const messages = await chatService.getPollMessages(pollId);
+
+      socket.join(`poll:${pollId}`);
+      logger.info(`poll:chat:joinRoom - ${username} rejoint sondage ${pollId}`);
+
+      if (typeof callback === 'function') callback({ success: true, data: messages });
+    } catch (error) {
+      logger.error('poll:chat:joinRoom error:', error.message);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
+      }
+    }
+  });
+
+  socket.on('poll:chat:leaveRoom', (payload) => {
+    if (payload && payload.pollId) {
+      socket.leave(`poll:${pollId}`); // Fix: payload.pollId, not pollId directly if not destructured
+      logger.info(`poll:chat:leaveRoom - ${username} quitte sondage ${payload.pollId}`);
+    }
+  });
 }

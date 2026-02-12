@@ -3,17 +3,18 @@ import { COLLECTIONS, CHAT_LIMITS } from '../../config/constants.js';
 import { generateMessageId } from '../../utils/ids.js';
 import { Errors } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
+import { pollsService } from './polls.service.js';
 
 export const chatService = {
-  async sendMessage({ pollId, content }, senderId, senderUsername, senderRole) {
-    const pollsCollection = getCollection(COLLECTIONS.POLLS);
-    const poll = await pollsCollection.findOne({ id: pollId });
+  async sendMessage({ roomId, content }, senderId, senderUsername) {
+    const roomsCollection = getCollection(COLLECTIONS.ROOMS);
+    const room = await roomsCollection.findOne({ id: roomId });
 
-    if (!poll) {
-      throw Errors.NOT_FOUND;
+    if (!room) {
+      throw Errors.ROOM_NOT_FOUND;
     }
 
-    const hasAccess = this.userHasPollAccess(poll, senderId, senderRole);
+    const hasAccess = this.userHasRoomAccess(room, senderId);
     if (!hasAccess) {
       throw Errors.FORBIDDEN;
     }
@@ -30,7 +31,7 @@ export const chatService = {
 
     const message = {
       id: generateMessageId(),
-      pollId,
+      roomId,
       content: content.trim(),
       senderId,
       senderUsername,
@@ -39,30 +40,29 @@ export const chatService = {
     };
 
     await messagesCollection.insertOne(message);
+    await this.pruneMessages(roomId);
 
-    await this.pruneMessages(pollId);
-
-    logger.info(`Message envoyé dans sondage ${pollId} par ${senderUsername}`);
+    logger.info(`Message envoyé dans salon ${roomId} par ${senderUsername}`);
 
     return this.formatMessage(message);
   },
 
-  async getHistory(pollId, userId, userRole) {
-    const pollsCollection = getCollection(COLLECTIONS.POLLS);
-    const poll = await pollsCollection.findOne({ id: pollId });
+  async getHistory(roomId, userId) {
+    const roomsCollection = getCollection(COLLECTIONS.ROOMS);
+    const room = await roomsCollection.findOne({ id: roomId });
 
-    if (!poll) {
-      throw Errors.NOT_FOUND;
+    if (!room) {
+      throw Errors.ROOM_NOT_FOUND;
     }
 
-    const hasAccess = this.userHasPollAccess(poll, userId, userRole);
+    const hasAccess = this.userHasRoomAccess(room, userId);
     if (!hasAccess) {
       throw Errors.FORBIDDEN;
     }
 
     const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
     const messages = await messagesCollection
-      .find({ pollId })
+      .find({ roomId })
       .sort({ createdAt: 1 })
       .limit(CHAT_LIMITS.HISTORY_SIZE)
       .toArray();
@@ -99,31 +99,28 @@ export const chatService = {
     return this.formatMessage(updated);
   },
 
-  userHasPollAccess(poll, userId, userRole) {
-    if (userRole === 'admin') return true;
+  userHasRoomAccess(room, userId) {
+    if (room.creatorId === userId) return true;
 
-    if (poll.creatorId === userId) return true;
-
-    if (poll.kickedUserIds?.includes(userId)) return false;
-
-    if (!poll.accessType || poll.accessType === 'public') return true;
-
-    if (poll.accessType === 'private') return false;
-
-    if (poll.accessType === 'selected') {
-      return Array.isArray(poll.allowedUserIds) && poll.allowedUserIds.includes(userId);
+    switch (room.accessType) {
+      case 'public':
+        return true;
+      case 'private':
+        return false;
+      case 'selected':
+        return Array.isArray(room.allowedUserIds) && room.allowedUserIds.includes(userId);
+      default:
+        return false;
     }
-
-    return true;
   },
 
-  async pruneMessages(pollId) {
+  async pruneMessages(roomId) {
     const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
-    const count = await messagesCollection.countDocuments({ pollId });
+    const count = await messagesCollection.countDocuments({ roomId });
 
     if (count > CHAT_LIMITS.HISTORY_SIZE) {
       const oldest = await messagesCollection
-        .find({ pollId })
+        .find({ roomId })
         .sort({ createdAt: 1 })
         .limit(count - CHAT_LIMITS.HISTORY_SIZE)
         .toArray();
@@ -133,15 +130,66 @@ export const chatService = {
     }
   },
 
+  async sendPollMessage({ pollId, content }, senderId, senderUsername) {
+    // Vérifier que le sondage existe
+    await pollsService.getPollById(pollId);
+
+    if (!content || content.trim().length === 0) {
+      throw Errors.INVALID_PAYLOAD;
+    }
+
+    if (content.length > CHAT_LIMITS.MAX_MESSAGE_LENGTH) {
+      throw Errors.MESSAGE_TOO_LARGE;
+    }
+
+    const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
+
+    const message = {
+      id: generateMessageId(),
+      pollId,
+      content: content.trim(),
+      senderId,
+      senderUsername,
+      deleted: false,
+      createdAt: new Date(),
+      type: 'poll_chat',
+    };
+
+    await messagesCollection.insertOne(message);
+
+    // On pourrait aussi pruner, mais gardons simple pour l'instant
+    // await this.prunePollMessages(pollId);
+
+    logger.info(`Message envoyé dans sondage ${pollId} par ${senderUsername}`);
+
+    return this.formatMessage(message);
+  },
+
+  async getPollMessages(pollId) {
+    // Vérifier l'existence
+    await pollsService.getPollById(pollId);
+
+    const messagesCollection = getCollection(COLLECTIONS.MESSAGES);
+    const messages = await messagesCollection
+      .find({ pollId })
+      .sort({ createdAt: 1 })
+      .limit(CHAT_LIMITS.HISTORY_SIZE)
+      .toArray();
+
+    return messages.map(m => this.formatMessage(m));
+  },
+
   formatMessage(message) {
     return {
       id: message.id,
-      pollId: message.pollId,
+      roomId: message.roomId,
+      pollId: message.pollId, // Ajout du pollId
       content: message.content,
       senderId: message.senderId,
       senderUsername: message.senderUsername,
       deleted: message.deleted || false,
       createdAt: message.createdAt,
+      type: message.type || 'room_chat',
     };
   },
 };
