@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import { getCollection } from '../../config/database.js';
 import { COLLECTIONS, ROLES, SESSION_STATUS } from '../../config/constants.js';
 import { env } from '../../config/env.js';
@@ -28,11 +29,14 @@ export const authService = {
     const userCount = await usersCollection.countDocuments();
     const role = userCount === 0 ? ROLES.ADMIN : ROLES.USER;
     
+    // Hasher le mot de passe
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     // Créer le nouvel utilisateur
     const user = {
       id: generateUserId(),
       username,
-      password,
+      password: hashedPassword,
       role,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -74,7 +78,8 @@ export const authService = {
     }
     
     // Vérifier le mot de passe
-    if (user.password !== password) {
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
       throw Errors.INVALID_CREDENTIALS;
     }
     
