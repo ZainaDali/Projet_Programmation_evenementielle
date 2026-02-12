@@ -51,18 +51,36 @@ export function setupPollHandlers(socket) {
         userId, username
       );
 
-      // Broadcast selon le type d'accès
-      if (poll.accessType === 'public' || !poll.accessType) {
-        getIO().emit('poll:created', { poll, createdBy: username });
-      } else if (poll.accessType === 'selected') {
-        // Envoyer au créateur + utilisateurs autorisés
-        emitToUser(userId, 'poll:created', { poll, createdBy: username });
-        for (const uid of poll.allowedUserIds) {
-          if (uid !== userId) emitToUser(uid, 'poll:created', { poll, createdBy: username });
+      // Le créateur rejoint automatiquement la room du poll
+      socket.join(`poll:${poll.id}`);
+
+      // Faire rejoindre automatiquement tous les utilisateurs autorisés à la room
+      const io = getIO();
+      const allSockets = Array.from(io.sockets.sockets.values());
+      
+      // Pour les polls sélectionnés/privés, faire rejoindre les utilisateurs autorisés
+      if (poll.accessType === 'selected' || poll.accessType === 'private') {
+        const userIdsToJoin = poll.accessType === 'selected' 
+          ? poll.allowedUserIds 
+          : [userId]; // Privé: juste le créateur
+        
+        for (const uid of userIdsToJoin) {
+          // Trouver tous les sockets de cet utilisateur
+          const userSockets = allSockets.filter(s => s.user?.userId === uid);
+          for (const userSocket of userSockets) {
+            userSocket.join(`poll:${poll.id}`);
+            logger.info(`User ${uid} auto-joined poll room ${poll.id}`);
+          }
         }
+      }
+
+      // Broadcast selon le type d'accès - TOUJOURS via la room maintenant
+      if (poll.accessType === 'public' || !poll.accessType) {
+        // Public: notifier tout le monde (broadcast global pour que les nouveaux utilisateurs le voient)
+        io.emit('poll:created', { poll, createdBy: username });
       } else {
-        // Privé: juste le créateur
-        emitToUser(userId, 'poll:created', { poll, createdBy: username });
+        // Sélectionné/Privé: notifier uniquement les utilisateurs dans la room
+        io.to(`poll:${poll.id}`).emit('poll:created', { poll, createdBy: username });
       }
 
       logger.info(`Poll created: ${poll.id} (${poll.accessType})`);
@@ -84,7 +102,8 @@ export function setupPollHandlers(socket) {
       const result = await pollsService.vote({ pollId, optionId }, userId, username);
       const { action, poll: updatedPoll } = result;
 
-      getIO().emit('poll:results', { poll: updatedPoll, votedBy: username, action });
+      // Envoyer les résultats uniquement aux utilisateurs dans la room du poll
+      getIO().to(`poll:${pollId}`).emit('poll:results', { poll: updatedPoll, votedBy: username, action });
 
       if (typeof callback === 'function') {
         const userVote = action === 'unvoted' ? null : optionId;
@@ -103,7 +122,8 @@ export function setupPollHandlers(socket) {
       if (!pollId) throw createError('Missing pollId', 400, 'INVALID_PAYLOAD');
 
       const closedPoll = await pollsService.closePoll(pollId, userId, role);
-      getIO().emit('poll:closed', { poll: closedPoll, closedBy: username });
+      // Envoyer uniquement aux utilisateurs dans la room du poll
+      getIO().to(`poll:${pollId}`).emit('poll:closed', { poll: closedPoll, closedBy: username });
 
       logger.info(`Poll ${pollId} closed by ${username}`);
       if (typeof callback === 'function') callback({ success: true, data: closedPoll });
@@ -121,7 +141,8 @@ export function setupPollHandlers(socket) {
 
       const updatedPoll = await pollsService.editPoll(pollId, updates, userId, role);
 
-      getIO().emit('poll:updated', { poll: updatedPoll, updatedBy: username });
+      // Envoyer uniquement aux utilisateurs dans la room du poll
+      getIO().to(`poll:${pollId}`).emit('poll:updated', { poll: updatedPoll, updatedBy: username });
 
       logger.info(`Poll ${pollId} updated by ${username}`);
       if (typeof callback === 'function') callback({ success: true, data: updatedPoll });
@@ -139,7 +160,16 @@ export function setupPollHandlers(socket) {
 
       const result = await pollsService.deletePoll(pollId, userId, role);
 
-      getIO().emit('poll:deleted', { pollId: result.pollId, question: result.question, deletedBy: username });
+      // Notifier tous les utilisateurs dans la room, puis supprimer la room
+      getIO().to(`poll:${pollId}`).emit('poll:deleted', { pollId: result.pollId, question: result.question, deletedBy: username });
+      
+      // Déconnecter tous les sockets de la room (optionnel, mais propre)
+      const room = getIO().sockets.adapter.rooms.get(`poll:${pollId}`);
+      if (room) {
+        room.forEach(socketId => {
+          getIO().sockets.sockets.get(socketId)?.leave(`poll:${pollId}`);
+        });
+      }
 
       logger.info(`Poll ${result.pollId} deleted by ${username}`);
       if (typeof callback === 'function') callback({ success: true, data: result });
@@ -157,8 +187,15 @@ export function setupPollHandlers(socket) {
 
       const updatedPoll = await pollsService.kickUser(pollId, targetUserId, userId, role);
 
-      // Notifier tout le monde de la mise à jour du sondage
-      getIO().emit('poll:updated', { poll: updatedPoll, updatedBy: username });
+      // Retirer l'utilisateur expulsé de la room
+      const targetSocket = Array.from(getIO().sockets.sockets.values())
+        .find(s => s.user?.userId === targetUserId);
+      if (targetSocket) {
+        targetSocket.leave(`poll:${pollId}`);
+      }
+
+      // Notifier les utilisateurs dans la room de la mise à jour
+      getIO().to(`poll:${pollId}`).emit('poll:updated', { poll: updatedPoll, updatedBy: username });
 
       // Notifier l'utilisateur expulsé
       emitToUser(targetUserId, 'poll:kicked', { pollId, kickedBy: username, question: updatedPoll.question });
@@ -177,12 +214,24 @@ export function setupPollHandlers(socket) {
       const { pollId } = payload;
       if (!pollId) throw createError('Missing pollId', 400, 'INVALID_PAYLOAD');
 
+      // Vérifier que l'utilisateur a accès au poll
+      const poll = await pollsService.getPollById(pollId);
+      if (!pollsService.canAccessPoll(poll, userId)) {
+        throw Errors.POLL_ACCESS_DENIED;
+      }
+
+      // Rejoindre la room Socket.IO du poll
+      socket.join(`poll:${pollId}`);
+      
       const updatedPoll = await pollsService.joinPoll(pollId, userId, username);
 
-      getIO().emit('poll:participantJoined', { pollId, userId, username, participants: updatedPoll.participants });
+      // Notifier uniquement les utilisateurs dans la room du poll
+      getIO().to(`poll:${pollId}`).emit('poll:participantJoined', { pollId, userId, username, participants: updatedPoll.participants });
 
+      logger.info(`User ${username} joined poll room ${pollId}`);
       if (typeof callback === 'function') callback({ success: true, data: updatedPoll });
     } catch (error) {
+      logger.error('Error joining poll:', error.message);
       if (typeof callback === 'function') callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
     }
   });
@@ -193,12 +242,18 @@ export function setupPollHandlers(socket) {
       const { pollId } = payload;
       if (!pollId) throw createError('Missing pollId', 400, 'INVALID_PAYLOAD');
 
+      // Quitter la room Socket.IO du poll
+      socket.leave(`poll:${pollId}`);
+      
       const updatedPoll = await pollsService.leavePoll(pollId, userId);
 
-      getIO().emit('poll:participantLeft', { pollId, userId, username, participants: updatedPoll.participants });
+      // Notifier uniquement les utilisateurs restants dans la room
+      getIO().to(`poll:${pollId}`).emit('poll:participantLeft', { pollId, userId, username, participants: updatedPoll.participants });
 
+      logger.info(`User ${username} left poll room ${pollId}`);
       if (typeof callback === 'function') callback({ success: true });
     } catch (error) {
+      logger.error('Error leaving poll:', error.message);
       if (typeof callback === 'function') callback({ success: false, error: { code: error.code || 'INTERNAL_ERROR', message: error.message } });
     }
   });
@@ -208,7 +263,18 @@ export function setupPollHandlers(socket) {
     logger.info(`📊 poll:getState received from ${username} (socket: ${socket.id}), callback type: ${typeof callback}`);
     try {
       const state = await pollsService.getPollsState(userId);
-      logger.info(`📊 poll:getState success: ${state.polls.length} polls found`);
+      
+      // Rejoindre automatiquement les rooms de tous les polls visibles
+      // (optionnel, mais permet de recevoir les mises à jour même sans poll:join explicite)
+      for (const poll of state.polls) {
+        try {
+          socket.join(`poll:${poll.id}`);
+        } catch (err) {
+          logger.warn(`Failed to join poll room ${poll.id}:`, err.message);
+        }
+      }
+      
+      logger.info(`📊 poll:getState success: ${state.polls.length} polls found, joined ${state.polls.length} rooms`);
       if (typeof callback === 'function') callback({ success: true, data: state });
     } catch (error) {
       logger.error('Error getting poll state:', error.message);

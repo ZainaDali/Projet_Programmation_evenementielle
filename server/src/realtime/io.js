@@ -148,6 +148,27 @@ export function emitToUser(userId, event, data) {
 }
 
 /**
+ * Envoyer un événement à tous les utilisateurs dans une room de poll
+ * @param {string} pollId - ID du poll
+ * @param {string} event - Nom de l'événement
+ * @param {any} data - Données à envoyer
+ */
+export function emitToPollRoom(pollId, event, data) {
+  getIO().to(`poll:${pollId}`).emit(event, data);
+}
+
+/**
+ * Envoyer un événement à tous les utilisateurs dans une room de chat (même que poll)
+ * @param {string} pollId - ID du poll (le chat est lié au poll)
+ * @param {string} event - Nom de l'événement
+ * @param {any} data - Données à envoyer
+ */
+export function emitToChatRoom(pollId, event, data) {
+  // Le chat utilise la même room que le poll
+  emitToPollRoom(pollId, event, data);
+}
+
+/**
  * Envoyer un événement à tous les utilisateurs connectés
  * @param {string} event - Nom de l'événement
  * @param {any} data - Données à envoyer
