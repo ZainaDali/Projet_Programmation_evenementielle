@@ -30,24 +30,19 @@ export function initSocketIO(httpServer) {
     
     logger.socket(`🔌 Connecté: ${username} (${userId}) - Socket: ${socket.id}`);
     
-    // ========== 4.1 METTRE EN LIGNE ==========
-    await presenceService.setOnline(userId, socket.id);
-    
-    // Joindre une room personnelle pour les messages privés
-    socket.join(`user:${userId}`);
-    
-    // Notifier les autres utilisateurs qu'il est en ligne
-    socket.broadcast.emit('user:online', {
-      userId,
-      username,
-      timestamp: new Date().toISOString(),
+    // DEBUG: Log ALL incoming events
+    socket.onAny((eventName, ...args) => {
+      logger.info(`📥 [${socket.id}] Event: ${eventName}, args count: ${args.length}`);
     });
-    
-    // ========== HANDLERS DE SONDAGES ==========
+
+    // ========== HANDLERS DE SONDAGES (enregistrés AVANT les opérations async) ==========
     setupPollHandlers(socket);
 
     // ========== HANDLERS DE CHAT ==========
     setupChatHandlers(socket);
+
+    // DEBUG: Log all registered event listeners
+    logger.info(`📋 Registered events on socket ${socket.id}: ${socket.eventNames().join(', ')}`);
     
     // ========== ÉVÉNEMENTS DE BASE ==========
     
@@ -109,6 +104,20 @@ export function initSocketIO(httpServer) {
     // Erreur sur le socket
     socket.on('error', (error) => {
       logger.error(`Socket error (${username}):`, error.message);
+    });
+
+    // ========== OPÉRATIONS ASYNC APRÈS l'enregistrement des handlers ==========
+    // 4.1 METTRE EN LIGNE
+    await presenceService.setOnline(userId, socket.id);
+    
+    // Joindre une room personnelle pour les messages privés
+    socket.join(`user:${userId}`);
+    
+    // Notifier les autres utilisateurs qu'il est en ligne
+    socket.broadcast.emit('user:online', {
+      userId,
+      username,
+      timestamp: new Date().toISOString(),
     });
   });
   
