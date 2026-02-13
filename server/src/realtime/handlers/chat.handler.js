@@ -1,7 +1,7 @@
 import { chatService } from '../../domain/services/chat.service.js';
 import { Errors } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
-import { getIO } from '../io.js';
+import { emitToChatRoom } from '../io.js';
 import { RATE_LIMITS } from '../../config/constants.js';
 
 const chatRateLimits = new Map();
@@ -46,9 +46,7 @@ export function setupChatHandlers(socket) {
         role
       );
 
-      getIO().to(`poll:${pollId}`).emit('chat:new_message', {
-        message,
-      });
+      emitToChatRoom(pollId, 'chat:new_message', { message });
 
       logger.info(`chat:send - ${username} dans sondage ${pollId}`);
 
@@ -107,7 +105,7 @@ export function setupChatHandlers(socket) {
       const { messageId } = payload;
       const deletedMessage = await chatService.deleteMessage(messageId, userId, role);
 
-      getIO().to(`poll:${deletedMessage.pollId}`).emit('chat:message_deleted', {
+      emitToChatRoom(deletedMessage.pollId, 'chat:message_deleted', {
         messageId: deletedMessage.id,
         pollId: deletedMessage.pollId,
       });
