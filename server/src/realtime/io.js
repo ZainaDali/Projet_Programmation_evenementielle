@@ -29,21 +29,10 @@ export function initSocketIO(httpServer) {
     const { userId, username, role } = socket.user;
     
     logger.socket(`🔌 Connecté: ${username} (${userId}) - Socket: ${socket.id}`);
-    
-    // DEBUG: Log ALL incoming events
-    socket.onAny((eventName, ...args) => {
-      logger.info(`📥 [${socket.id}] Event: ${eventName}, args count: ${args.length}`);
-    });
 
-    // ========== HANDLERS DE SONDAGES (enregistrés AVANT les opérations async) ==========
     setupPollHandlers(socket);
-
-    // ========== HANDLERS DE CHAT ==========
     setupChatHandlers(socket);
 
-    // DEBUG: Log all registered event listeners
-    logger.info(`📋 Registered events on socket ${socket.id}: ${socket.eventNames().join(', ')}`);
-    
     // ========== ÉVÉNEMENTS DE BASE ==========
     
     // Ping/Pong pour vérifier la connexion
@@ -178,7 +167,5 @@ export function broadcast(event, data) {
     logger.error('❌ broadcast: Socket.IO non initialisé!');
     return;
   }
-  logger.info(`📢 Broadcasting ${event} à tous les clients...`);
   io.emit(event, data);
-  logger.info(`📢 Broadcast ${event} terminé`);
 }

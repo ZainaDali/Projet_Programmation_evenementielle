@@ -54,10 +54,13 @@ const PollsView = ({ addActivity }) => {
 
     s.emit('poll:getState', {}, (response) => {
       clearTimeout(timeout);
-      console.log('[PollsView] poll:getState response:', response);
       setLoading(false);
       if (response?.success && response.data?.polls) {
-        setPolls(response.data.polls);
+        const pollsList = response.data.polls;
+        setPolls(pollsList);
+        pollsList.forEach((p) => {
+          s.emit('poll:join', { pollId: p.id });
+        });
       } else {
         setPolls([]);
       }
@@ -76,17 +79,12 @@ const PollsView = ({ addActivity }) => {
 
     // When socket connects (or reconnects), load data immediately
     const onConnect = () => {
-      console.log('[PollsView] Socket connected! Loading polls...');
       loadPolls(socket);
       loadUsers(socket);
     };
 
-    // If socket is already connected when this effect runs, load immediately
     if (socket.connected) {
-      console.log('[PollsView] Socket already connected on mount, loading polls...');
       onConnect();
-    } else {
-      console.log('[PollsView] Socket not yet connected, waiting for connect event...');
     }
 
     socket.on('connect', onConnect);
