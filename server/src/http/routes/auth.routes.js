@@ -38,6 +38,15 @@ router.post('/register', async (req, res, next) => {
     
     logger.success(`✅ Utilisateur créé: ${username}`);
     
+    // Notifier tous les clients qu'un nouvel utilisateur s'est inscrit
+    if (req.io) {
+      req.io.emit('user:registered', {
+        userId: result.user.id,
+        username: result.user.username,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
     res.status(201).json({
       success: true,
       data: result,
@@ -75,6 +84,18 @@ router.post('/login', async (req, res, next) => {
 router.post('/logout', authMiddleware, async (req, res, next) => {
   try {
     const result = await authService.logout(req.token);
+    
+    // Forcer la déconnexion du socket de l'utilisateur
+    if (req.io && req.user) {
+      const userRoom = `user:${req.user.id}`;
+      // Envoyer un événement pour forcer le client à se déconnecter
+      req.io.to(userRoom).emit('auth:forceLogout', {
+        reason: 'Session révoquée',
+        timestamp: new Date().toISOString(),
+      });
+      // Déconnecter tous les sockets de cet utilisateur
+      req.io.in(userRoom).disconnectSockets(true);
+    }
     
     res.status(200).json({
       success: true,
