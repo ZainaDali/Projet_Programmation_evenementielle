@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import authRoutes from './routes/auth.routes.js';
+import pollsRoutes from './routes/polls.routes.js';
+import chatRoutes from './routes/chat.routes.js';
 import { logger } from '../utils/logger.js';
 
 export function createApp() {
@@ -27,6 +29,8 @@ export function createApp() {
   });
 
   app.use('/auth', authRoutes);
+  app.use('/api/polls', pollsRoutes);
+  app.use('/api/chat', chatRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

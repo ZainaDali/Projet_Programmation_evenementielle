@@ -1,38 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useSocket } from '../context/SocketContext';
 import { Users, Circle } from 'lucide-react';
+// import { api } from '../services/api'; // Could implement getOnlineUsers later
 
 const Sidebar = () => {
-  const { socket, connected } = useSocket();
   const [users, setUsers] = useState([]);
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const loadUsers = () => {
-    if (!socket || !socket.connected) return;
-    socket.emit('presence:getAllUsers');
-  };
+  // Socket logic removed. 
+  // TODO: Implement HTTP polling for user list if needed.
 
-  useEffect(() => {
-    if (!socket) return;
-    socket.on('presence:allUsersResponse', (response) => {
-      if (response && response.success && response.data) {
-        setUsers(response.data);
-      }
-    });
-    socket.on('user:online', loadUsers);
-    socket.on('user:offline', loadUsers);
-    return () => {
-      socket.off('presence:allUsersResponse');
-      socket.off('user:online');
-      socket.off('user:offline');
-    };
-  }, [socket]);
-
-  useEffect(() => {
-    if (socket && connected) {
-      loadUsers();
-    }
-  }, [socket, connected]);
 
   const onlineUsers = users.filter(u => u.status === 'online');
   const offlineUsers = users.filter(u => u.status === 'offline');

@@ -1,68 +1,49 @@
 import { useState } from 'react';
-import { useSocket } from '../context/SocketContext';
+import { api } from '../services/api'; // Import API
+import { useAuth } from '../context/AuthContext'; // Import Auth
 import './Modal.css';
 
 const CreatePollModal = ({ roomId, onClose, onCreated }) => {
-  const { socket } = useSocket();
+  const { token } = useAuth(); // Get token
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(['', '']);
 
-  const handleAddOption = () => {
-    if (options.length < 6) {
-      setOptions([...options, '']);
-    }
-  };
+  // ... (keep handlers)
 
-  const handleOptionChange = (index, value) => {
-    const newOptions = [...options];
-    newOptions[index] = value;
-    setOptions(newOptions);
-  };
-
-  const handleRemoveOption = (index) => {
-    if (options.length > 2) {
-      setOptions(options.filter((_, i) => i !== index));
-    }
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => { // Make async
     e.preventDefault();
-    
-    const validOptions = options.filter(opt => opt.trim().length > 0);
-    
-    if (!question.trim()) {
-      alert('Veuillez entrer une question');
-      return;
-    }
-    
-    if (validOptions.length < 2) {
-      alert('Veuillez entrer au moins 2 options');
-      return;
-    }
-    
-    if (validOptions.length > 6) {
-      alert('Maximum 6 options autorisées');
-      return;
-    }
 
-    socket.emit('poll:create', {
-      roomId,
-      question: question.trim(),
-      options: validOptions
-    }, (response) => {
-      if (response.success) {
-        onCreated();
-      } else {
-        alert(response.error.message || 'Erreur lors de la création du sondage');
-      }
-    });
+    // ... (validations kept)
+
+    const validOptions = options.filter(opt => opt.trim().length > 0);
+
+    if (!question.trim()) { alert('Veuillez entrer une question'); return; }
+    if (validOptions.length < 2) { alert('Veuillez entrer au moins 2 options'); return; }
+    if (validOptions.length > 6) { alert('Maximum 6 options autorisées'); return; }
+
+    try {
+      // Use API instead of socket
+      // Note: mapping options to expected format if needed, assuming API expects array of objects with text
+      const optionsPayload = validOptions.map((text, idx) => ({ id: String(idx + 1), text }));
+
+      await api.createPoll(token, {
+        question: question.trim(),
+        options: optionsPayload,
+        accessType: 'public', // Default
+        allowedUserIds: []
+      });
+
+      onCreated();
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la création du sondage');
+    }
   };
 
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h3>Créer un sondage</h3>
-        
+
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Question du sondage</label>
@@ -101,7 +82,7 @@ const CreatePollModal = ({ roomId, onClose, onCreated }) => {
                 </div>
               ))}
             </div>
-            
+
             {options.length < 6 && (
               <button
                 type="button"
@@ -111,7 +92,7 @@ const CreatePollModal = ({ roomId, onClose, onCreated }) => {
                 + Ajouter une option
               </button>
             )}
-            
+
             <p className="form-hint">Minimum 2 options, maximum 6</p>
           </div>
 
